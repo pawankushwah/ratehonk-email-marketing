@@ -1,1 +1,1 @@
-"# ratehonk-email-marketing" 
+# Ratehonk Email Marketing Tool

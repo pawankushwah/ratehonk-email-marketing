@@ -1,0 +1,69 @@
+@import "tailwindcss";
+@source "./tmp";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* Main UI Colors */
+  --color-main: #0EA5E9;
+  --color-main-dim: #E0F4FC;
+  --color-border: #E5E8EB;
+  --color-frame-background: #F5F5F5;
+
+  /* Typography */
+  --color-text: #374151;
+  --color-text-dim: #6B7280;
+
+  /* Accent & Status Colors */
+  --color-alt: #2E449B;
+  --color-red: #ED4A38;
+  --color-yellow: #E9BD0E;
+  --color-green: #51C85F;
+  --color-red-dim: #FFD6D1;
+  --color-green-dim: #D7FFDC;
+
+  /* Font & Typography Settings */
+  --font-sans: 'Geist', sans-serif;
+  --text-sm: 14px;
+  --font-normal: 400;
+  --leading-tight: 20px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-oxygen: var(--font-oxygen), sans-serif;
+  --font-inter: var(--font-inter), sans-serif;
+  --text-sm: var(--text-sm);
+  --font-weight-normal: var(--font-normal);
+  --leading-tight: var(--leading-tight);
+
+  --color-main: var(--color-main);
+  --color-main-dim: var(--color-main-dim);
+  --color-border: var(--color-border);
+  --color-frame-background: var(--color-frame-background);
+  --color-text: var(--color-text);
+  --color-text-dim: var(--color-text-dim);
+  --color-alt: var(--color-alt);
+  --color-red: var(--color-red);
+  --color-yellow: var(--color-yellow);
+  --color-green: var(--color-green);
+  --color-red-dim: var(--color-red-dim);
+  --color-green-dim: var(--color-green-dim);
+}
+
+/* @media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+} */
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
