@@ -6,6 +6,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { z } from "zod";
 import { useFormik } from "formik";
+import { trpc } from "@/app/trpc";
+import { useToast } from "@/app/hooks/useToast";
 
 const registerSchema = z.object({
     businessName: z.string().min(1, "Business Name is required"),
@@ -30,6 +32,17 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 import AuthLogo from "@/app/components/ui/authLogo";
 
 export default function RegisterPage() {
+    const { addToast } = useToast();
+    const registerMutation = trpc.auth.register.useMutation({
+        onSuccess: () => {
+            addToast("We have sent an email, you can continue from there.", "success");
+            formik.resetForm();
+        },
+        onError: (err) => {
+            addToast(err.message || "Something went wrong", "error");
+        }
+    });
+
     const formik = useFormik<RegisterFormValues>({
         initialValues: {
             businessName: "",
@@ -38,25 +51,25 @@ export default function RegisterPage() {
         },
         validate: validateWithZod(registerSchema),
         onSubmit: (values) => {
-            console.log("Form submitted", values);
+            registerMutation.mutate(values);
         },
     });
 
     return (
-        <div className="flex min-h-screen w-full">
+        <div className="flex min-h-screen w-full justify-center items-center">
             {/* Left Part of the Register */}
-            <div className="flex flex-col justify-center space-y-6 px-8 py-12 lg:px-[140px] lg:py-[90px] max-w-3xl w-full">
+            <div className="flex flex-col justify-center space-y-6 px-8 py-12 lg:px-[140px] lg:py-[90px] max-w-3xl">
                 {/* Brand Identity */}
                 <AuthLogo />
 
                 {/* Main Heading Text */}
                 <h1 className="text-3xl font-bold tracking-tight text-text">
-                    Sign in to your account
+                    Create your account
                 </h1>
 
                 {/* Narrative Context Description */}
                 <p className="text-sm font-normal font-oxygen leading-relaxed text-text-dim max-w-[440px]">
-                    Welcome back to RateHonk. Launch smarter email campaigns, automate your marketing, and connect with your audience—all from one powerful platform.
+                    Welcome to RateHonk. Launch smarter email campaigns, automate your marketing, and connect with your audienceall from one powerful platform.
                 </p>
 
                 <form onSubmit={formik.handleSubmit} noValidate className="flex flex-col space-y-6 max-w-[440px]">
@@ -74,10 +87,10 @@ export default function RegisterPage() {
 
                     <Input
                         name="email"
-                        label="Email"
+                        label="Business Email"
                         type="email"
                         required
-                        placeholder="Enter your email address"
+                        placeholder="e.g. yourname@example.com"
                         value={formik.values.email}
                         onChange={formik.handleChange}
                         onBlur={formik.handleBlur}
@@ -99,8 +112,8 @@ export default function RegisterPage() {
                         By creating an account, you agree to RateHonk's Terms of Service and Privacy Policy.
                     </p>
 
-                    <Button type="submit">
-                        Sign In
+                    <Button type="submit" disabled={registerMutation.isPending}>
+                        {registerMutation.isPending ? "Signing Up..." : "Sign Up"}
                     </Button>
                 </form>
 
@@ -115,7 +128,7 @@ export default function RegisterPage() {
                 </div>
             </div>
 
-            <div className="flex-1 relative hidden lg:block">
+            <div className="w-[600px] relative hidden xl:block">
                 <Image
                     src="/images/ui/register.png"
                     alt="Register"

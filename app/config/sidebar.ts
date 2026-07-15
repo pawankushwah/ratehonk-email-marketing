@@ -88,7 +88,6 @@ export const SIDEBAR_MENUS: MenuItem[] = [
     order: 5,
     hasSubmenu: true,
     children: [
-      { id: "audience-dashboard", label: "Audience Dashboard", href: "/audience" },
       { id: "audience-tags", label: "Tags", href: "/audience/tags" },
       { id: "audience-segments", label: "Segments", href: "/audience/segments" },
       { id: "audience-surveys", label: "Surveys", href: "/audience/surveys" },
@@ -147,23 +146,5 @@ export const SIDEBAR_MENUS: MenuItem[] = [
     children: [
       { id: "integrations-manage", label: "Manage", href: "/integrations/manage" },
     ]
-  },
-
-  // Bottom Group
-  {
-    id: "support",
-    label: "Support",
-    icon: LifeBuoy,
-    href: "/support",
-    group: "bottom",
-    order: 1,
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    icon: Settings,
-    href: "/settings",
-    group: "bottom",
-    order: 2,
   },
 ];

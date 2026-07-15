@@ -5,7 +5,6 @@ import { Ghost } from "lucide-react";
 export default function GlobalNotFound() {
   return (
     <div className="flex flex-col min-h-screen bg-white">
-      <Navbar />
       <main className="flex-grow flex items-center justify-center px-4">
         <div className="text-center">
           <div className="flex justify-center mb-8">
@@ -21,18 +20,18 @@ export default function GlobalNotFound() {
             Oops! The page you are looking for seems to have vanished into thin air. It might have been moved or deleted.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <Link 
+            <Link
               href="/"
-              className="bg-main hover:brightness-95 text-white px-8 py-4 rounded-full font-bold text-lg transition-all shadow-lg shadow-sky-500/30"
+              className="bg-main hover:brightness-95 text-white px-4 py-2.5 rounded-full font-bold text-lg transition-all shadow-lg shadow-sky-500/30"
             >
               Back to Home
             </Link>
-            <Link 
+            {/* <Link
               href="/support"
-              className="bg-white border-2 border-border hover:border-gray-300 text-text px-8 py-4 rounded-full font-bold text-lg transition-colors"
+              className="bg-white border-2 border-border hover:border-gray-300 text-text px-4 py-2.5 rounded-full font-bold text-lg transition-colors"
             >
               Contact Support
-            </Link>
+            </Link> */}
           </div>
         </div>
       </main>

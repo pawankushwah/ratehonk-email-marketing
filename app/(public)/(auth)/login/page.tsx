@@ -27,9 +27,30 @@ const validateWithZod = (schema: z.ZodSchema) => (values: any) => {
 };
 
 type LoginFormValues = z.infer<typeof loginSchema>;
+import { useRouter } from "next/navigation";
+import { trpc } from "@/app/trpc";
+import { useToast } from "@/app/hooks/useToast";
 import AuthLogo from "@/app/components/ui/authLogo";
 
 export default function LoginPage() {
+    const router = useRouter();
+    const { addToast } = useToast();
+
+    const loginMutation = trpc.auth.login.useMutation({
+        onSuccess: (data) => {
+            addToast("Logged in successfully!", "success");
+
+            // Backend sets the HttpOnly cookie automatically
+            if (data.user) {
+                localStorage.setItem("ratehonk_user", JSON.stringify(data.user));
+            }
+            router.push("/dashboard");
+        },
+        onError: (err) => {
+            addToast(err.message || "Invalid credentials", "error");
+        }
+    });
+
     const formik = useFormik<LoginFormValues>({
         initialValues: {
             email: "",
@@ -38,14 +59,18 @@ export default function LoginPage() {
         },
         validate: validateWithZod(loginSchema),
         onSubmit: (values) => {
-            console.log("Form submitted", values);
+            loginMutation.mutate({
+                email: values.email,
+                password: values.password,
+                rememberMe: values.rememberMe
+            });
         },
     });
 
     return (
-        <div className="flex min-h-screen w-full">
+        <div className="flex min-h-screen w-full justify-center items-center">
             {/* Left Part of the Login */}
-            <div className="flex flex-col justify-center space-y-6 px-8 py-12 lg:px-[140px] lg:py-[90px] max-w-3xl w-full">
+            <div className="flex flex-col justify-center space-y-6 px-8 py-12 lg:px-[140px] lg:py-[90px] max-w-3xl">
                 {/* Brand Identity */}
                 <AuthLogo />
 
@@ -91,8 +116,8 @@ export default function LoginPage() {
                         onChange={(e) => formik.setFieldValue("rememberMe", e.target.checked)}
                     />
 
-                    <Button type="submit">
-                        Login
+                    <Button type="submit" disabled={loginMutation.isPending}>
+                        {loginMutation.isPending ? "Logging in..." : "Login"}
                     </Button>
                 </form>
 
@@ -106,7 +131,7 @@ export default function LoginPage() {
                     </Link>
                 </div>
             </div>
-            <div className="flex-1 relative hidden lg:block">
+            <div className="w-[600px] relative hidden xl:block">
                 <Image
                     src="/images/ui/login.png"
                     alt="Login"

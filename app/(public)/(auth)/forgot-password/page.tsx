@@ -38,9 +38,9 @@ export default function ForgotPasswordPage() {
     });
 
     return (
-        <div className="flex min-h-screen w-full">
+        <div className="flex min-h-screen w-full items-center justify-center">
             {/* Left Part of the Forgot Password */}
-            <div className="flex flex-col justify-center space-y-6 px-8 py-12 lg:px-[140px] lg:py-[90px] max-w-3xl w-full">
+            <div className="flex flex-col justify-center space-y-6 px-8 py-12 lg:px-[140px] lg:py-[90px] max-w-3xl">
                 {/* Brand Identity */}
                 <AuthLogo />
 
@@ -83,7 +83,7 @@ export default function ForgotPasswordPage() {
                 </div>
             </div>
 
-            <div className="flex-1 relative hidden lg:block">
+            <div className="w-[600px] relative hidden xl:block">
                 <Image
                     src="/images/ui/forgot.png"
                     alt="Forgot Password"

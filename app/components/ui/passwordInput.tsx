@@ -1,7 +1,8 @@
 // components/ui/PasswordInput.tsx
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useState } from 'react';
 import { Input } from './input';
 import Link from 'next/link';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface PasswordInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   onForgotPassword?: (e: React.MouseEvent<HTMLButtonElement>) => void;
@@ -12,6 +13,8 @@ interface PasswordInputProps extends React.InputHTMLAttributes<HTMLInputElement>
 
 export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
   ({ onForgotPassword, forgotPasswordHref, label, error, ...props }, ref) => {
+    const [showPassword, setShowPassword] = useState(false);
+
     let forgotPasswordAction = null;
     
     if (forgotPasswordHref) {
@@ -35,14 +38,27 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
       );
     }
 
+    const togglePasswordVisibility = () => {
+      setShowPassword(!showPassword);
+    };
+
     return (
       <Input
         ref={ref}
         label={!label ? "Password" : label}
-        type="password"
         rightLabelAction={forgotPasswordAction}
+        rightIcon={
+          <button
+            type="button"
+            onClick={togglePasswordVisibility}
+            className="text-gray-400 hover:text-gray-600 focus:outline-none"
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        }
         error={error}
         {...props}
+        type={showPassword ? "text" : "password"}
       />
     );
   }
