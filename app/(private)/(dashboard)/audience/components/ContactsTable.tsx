@@ -54,12 +54,12 @@ export function ContactsTable({ contacts, businessId, refetch }: { contacts: Con
   const updateStatusMutation = trpc.audience.updateStatus.useMutation({
     onSuccess: (data) => {
       if (data.success) {
-        showToast(data.message || 'Status updated', 'success');
+        showToast(('message' in data ? data.message : undefined) || 'Status updated', 'success');
         setSelectedIds(new Set());
         setIsStatusMenuOpen(false);
         refetch();
       } else {
-        showToast(data.error || 'Failed to update status', 'error');
+        showToast(('error' in data ? data.error : undefined) || 'Failed to update status', 'error');
       }
     }
   });
@@ -67,11 +67,11 @@ export function ContactsTable({ contacts, businessId, refetch }: { contacts: Con
   const deleteContactsMutation = trpc.audience.deleteContacts.useMutation({
     onSuccess: (data) => {
       if (data.success) {
-        showToast(data.message || 'Contacts deleted', 'success');
+        showToast(('message' in data ? data.message : undefined) || 'Contacts deleted', 'success');
         setSelectedIds(new Set());
         refetch();
       } else {
-        showToast(data.error || 'Failed to delete contacts', 'error');
+        showToast(('error' in data ? data.error : undefined) || 'Failed to delete contacts', 'error');
       }
     }
   });

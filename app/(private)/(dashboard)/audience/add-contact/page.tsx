@@ -44,22 +44,22 @@ export default function AddContactPage() {
     { businessId: activeBusinessId || '' },
     { enabled: !!activeBusinessId }
   );
-  const tags = tagsData?.tags || [];
+  const tags = (tagsData && 'tags' in tagsData ? tagsData.tags : []) || [];
 
   const addContactMutation = trpc.audience.addContact.useMutation({
     onSuccess: (data) => {
       if (data.success) {
-        showToast(data.message || 'Contact added', 'success');
+        showToast(('message' in data ? data.message : undefined) || 'Contact added', 'success');
         router.push('/audience');
       } else {
-        showToast(data.error || 'Failed to add contact', 'error');
+        showToast(('error' in data ? data.error : undefined) || 'Failed to add contact', 'error');
       }
     }
   });
 
   const addTagMutation = trpc.tags.addTag.useMutation({
     onSuccess: (data) => {
-      if (data.success && data.tag) {
+      if (data.success && 'tag' in data && data.tag) {
         setSelectedTagIds(prev => [...prev, data.tag!.id]);
         setNewTagName('');
         refetchTags();

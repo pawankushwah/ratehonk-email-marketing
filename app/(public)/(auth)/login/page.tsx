@@ -1,4 +1,5 @@
 "use client";
+import React, { useState } from "react";
 import Button from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { PasswordInput } from "@/app/components/ui/passwordInput";
@@ -35,9 +36,23 @@ import AuthLogo from "@/app/components/ui/authLogo";
 export default function LoginPage() {
     const router = useRouter();
     const { addToast } = useToast();
+    const [activeSessions, setActiveSessions] = useState<any[] | null>(null);
+    const [pendingLogin, setPendingLogin] = useState<LoginFormValues | null>(null);
 
     const loginMutation = trpc.auth.login.useMutation({
         onSuccess: (data) => {
+            console.log(data, "login response")
+            if (data.requiresLogout) {
+                setPendingLogin(formik.values);
+                setActiveSessions(data.activeSessions || []);
+                return;
+            }
+
+            if (!data.success) {
+                addToast(data.message || "Invalid credentials", "error");
+                return;
+            }
+
             addToast("Logged in successfully!", "success");
 
             // Backend sets the HttpOnly cookie automatically
@@ -66,6 +81,54 @@ export default function LoginPage() {
             });
         },
     });
+
+    if (activeSessions) {
+        return (
+            <div className="flex min-h-screen justify-center items-center">
+                <div className="flex flex-col justify-center space-y-6 px-8 py-12 lg:px-0 max-w-3xl w-full animate-in slide-in-from-right duration-500 fade-in">
+                    <h2 className="text-3xl font-bold tracking-tight text-text">Device Limit Reached</h2>
+                    <p className="text-sm font-normal font-oxygen leading-relaxed text-text-dim max-w-[440px]">
+                        You've reached the maximum number of active devices. Please log out of a session below to continue logging in.
+                    </p>
+                    <div className="flex flex-col space-y-4 max-w-[440px]">
+                        {activeSessions.map((session) => (
+                            <div key={session.id} className="flex justify-between items-center p-4 border border-input rounded-xl bg-background shadow-sm hover:border-main transition-all">
+                                <div className="flex flex-col">
+                                    <span className="font-semibold text-text text-sm capitalize">{session.deviceType} - {session.browser}</span>
+                                    <span className="text-xs text-text-dim mt-1">{new Date(session.createdAt).toLocaleDateString()} • {session.ipAddress}</span>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        if (pendingLogin) {
+                                            loginMutation.mutate({
+                                                ...pendingLogin,
+                                                logoutSessionId: session.id
+                                            });
+                                        }
+                                    }}
+                                    disabled={loginMutation.isPending}
+                                >
+                                    Logout
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                    <Button
+                        variant="ghost"
+                        className="max-w-[440px] mt-2"
+                        onClick={() => {
+                            setActiveSessions(null);
+                            setPendingLogin(null);
+                        }}
+                    >
+                        Cancel Login
+                    </Button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex min-h-screen w-full justify-center items-center">

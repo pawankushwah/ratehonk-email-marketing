@@ -35,7 +35,7 @@ export default function AudiencePage() {
     );
   }
 
-  const contacts = data?.contacts || [];
+  const contacts = ((data && 'contacts' in data ? data.contacts : []) || []) as any[];
 
   return (
     <div className="max-w-[1400px] mx-auto py-8 px-6">
@@ -55,15 +55,12 @@ export default function AudiencePage() {
             <>
               <div className="fixed inset-0 z-10" onClick={() => setIsAddMenuOpen(false)} />
               <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 shadow-lg rounded-md z-20 py-1">
-                <button
+                <Link
                   className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                  onClick={() => {
-                    setIsAddMenuOpen(false);
-                    // Add import logic here later
-                  }}
+                  href="/audience/import"
                 >
                   <Upload className="w-4 h-4" /> Import contacts
-                </button>
+                </Link>
                 <Link
                   href="/audience/add-contact"
                   className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
