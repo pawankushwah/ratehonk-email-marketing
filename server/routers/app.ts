@@ -10,6 +10,7 @@ import { saasRouter } from './saas';
 import { uploadRouter } from './upload';
 import { audienceRouter } from './audience';
 import { tagsRouter } from './tags';
+import { emailtempRouter } from './emailtemp';
 
 export const appRouter = router({
   auth: authRouter,
@@ -20,6 +21,7 @@ export const appRouter = router({
   upload: uploadRouter,
   audience: audienceRouter,
   tags: tagsRouter,
+  emailtemp: emailtempRouter,
 
   healthCheck: publicProcedure
     .meta({

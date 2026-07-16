@@ -157,8 +157,6 @@ export const contactTags = pgTable('contact_tags', {
   tagId: uuid('tag_id').references(() => tags.id, { onDelete: 'cascade' }).notNull(),
 });
 
-import { relations } from 'drizzle-orm';
-
 export const audienceContactsRelations = relations(audienceContacts, ({ many }) => ({
   contactTags: many(contactTags),
 }));
@@ -175,5 +173,23 @@ export const contactTagsRelations = relations(contactTags, ({ one }) => ({
   tag: one(tags, {
     fields: [contactTags.tagId],
     references: [tags.id],
+  }),
+}));
+
+export const emailTemplates = pgTable('email_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  businessId: uuid('business_id').references(() => businesses.id).notNull(),
+  name: text('name').notNull(),
+  category: text('category').default('General'),
+  description: text('description'),
+  htmlContent: text('html_content').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const emailTemplatesRelations = relations(emailTemplates, ({ one }) => ({
+  business: one(businesses, {
+    fields: [emailTemplates.businessId],
+    references: [businesses.id],
   }),
 }));
