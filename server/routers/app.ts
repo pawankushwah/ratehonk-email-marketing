@@ -10,6 +10,7 @@ import { saasRouter } from './saas';
 import { uploadRouter } from './upload';
 import { audienceRouter } from './audience';
 import { tagsRouter } from './tags';
+import { apiKeyRouter } from './apiKey';
 import { emailtempRouter } from './emailtemp';
 
 export const appRouter = router({
@@ -21,6 +22,7 @@ export const appRouter = router({
   upload: uploadRouter,
   audience: audienceRouter,
   tags: tagsRouter,
+  apiKeys: apiKeyRouter,
   emailtemp: emailtempRouter,
 
   healthCheck: publicProcedure

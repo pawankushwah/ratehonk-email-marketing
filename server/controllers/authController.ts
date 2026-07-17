@@ -61,7 +61,16 @@ const checkDeviceLimits = async (userId: string, deviceType: string, forceLogout
 
   if (activeSessions.length >= limit) {
     if (!forceLogout) {
-      return { limitReached: true };
+      return { 
+        limitReached: true,
+        activeSessions: activeSessions.map(s => ({
+          id: s.id,
+          deviceType: s.deviceType,
+          browser: s.browser,
+          ipAddress: s.ipAddress,
+          createdAt: s.createdAt
+        }))
+      };
     }
     const sessionsToRemove = activeSessions.slice(0, activeSessions.length - limit + 1);
     for (const session of sessionsToRemove) {
@@ -200,6 +209,15 @@ export const verifyRegistration = async ({ input, ctx }: { input: any, ctx: any 
     defaultBusinessId = userBusinesses.length > 0 ? userBusinesses[0].id : null;
   }
 
+  if (input.logoutSessionId) {
+    await db.delete(refreshTokens).where(
+      and(
+        eq(refreshTokens.id, input.logoutSessionId),
+        eq(refreshTokens.userId, user.id)
+      )
+    );
+  }
+
   // 4. Delete the used token
   await db.delete(verificationTokens).where(eq(verificationTokens.id, validToken.id));
 
@@ -220,6 +238,7 @@ export const verifyRegistration = async ({ input, ctx }: { input: any, ctx: any 
     return {
       success: false,
       requiresLogout: true,
+      activeSessions: deviceCheck.activeSessions,
       message: `Maximum device limit reached for ${deviceType}. Do you want to log out the oldest session?`
     };
   }
@@ -289,6 +308,15 @@ export const login = async ({ input, ctx }: { input: any, ctx: any }) => {
   const userBusinesses = await db.query.businesses.findMany({ where: eq(businesses.userId, user.id) });
   const defaultBusinessId = userBusinesses.length > 0 ? userBusinesses[0].id : null;
 
+  if (input.logoutSessionId) {
+    await db.delete(refreshTokens).where(
+      and(
+        eq(refreshTokens.id, input.logoutSessionId),
+        eq(refreshTokens.userId, user.id)
+      )
+    );
+  }
+
   // Generate new JWTs
   const userAgent = ctx.req?.headers?.['user-agent'] || '';
   const fingerprint = crypto.createHash('sha256').update(userAgent).digest('hex');
@@ -304,6 +332,7 @@ export const login = async ({ input, ctx }: { input: any, ctx: any }) => {
     return {
       success: false,
       requiresLogout: true,
+      activeSessions: deviceCheck.activeSessions,
       message: `Maximum device limit reached for ${deviceType}. Do you want to log out the oldest session?`
     };
   }

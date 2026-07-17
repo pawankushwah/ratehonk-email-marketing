@@ -224,7 +224,7 @@ export default function Topbar() {
               <button
                 onClick={() => {
                   setIsDropdownOpen(false);
-                  router.push('/settings');
+                  router.push('/dashboard/profile?tab=settings');
                 }}
                 className="w-full text-left px-4 py-2 text-sm text-text hover:bg-gray-50 flex items-center transition-colors"
               >

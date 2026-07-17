@@ -19,6 +19,7 @@ export const users = pgTable('users', {
 
 export const usersRelations = relations(users, ({ many, one }) => ({
   businesses: many(businesses),
+  apiKeys: many(apiKeys),
   userSubscriptions: one(userSubscriptions),
 }));
 
@@ -173,6 +174,24 @@ export const contactTagsRelations = relations(contactTags, ({ one }) => ({
   tag: one(tags, {
     fields: [contactTags.tagId],
     references: [tags.id],
+  }),
+}));
+
+export const apiKeys = pgTable('api_keys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  provider: text('provider').notNull(),
+  name: text('name'),
+  key: text('key').notNull(),
+  isActive: boolean('is_active').default(false).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
+  user: one(users, {
+    fields: [apiKeys.userId],
+    references: [users.id],
   }),
 }));
 

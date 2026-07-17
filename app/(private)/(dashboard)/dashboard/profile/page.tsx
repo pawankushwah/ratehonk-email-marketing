@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, Suspense } from 'react';
 import { trpc } from '@/app/trpc';
-import { User, Building2, Plus, Edit2, ArrowLeft, Mail, Phone, X, Globe, Copy, CheckCircle2, MoreVertical, Trash2 } from 'lucide-react';
+import { User, Building2, Plus, Edit2, ArrowLeft, Mail, Phone, X, Globe, Copy, CheckCircle2, MoreVertical, Trash2, Settings } from 'lucide-react';
 import { useToast } from '@/app/hooks/useToast';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -10,11 +10,11 @@ import { PhoneInput } from '@/app/components/ui/PhoneInput';
 import { useFormik } from 'formik';
 import { z } from 'zod';
 import { validateZodSchema } from '@/app/lib/formikZodAdapter';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useBusinessStore } from '@/app/store/useBusinessStore';
 import { ImageUploadField } from '@/app/components/ui/ImageUploadField';
 import { countries } from '@/app/lib/countries';
-
+import { SettingsTab } from './components/SettingsTab';
 // --- Zod Schemas ---
 const profileSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
@@ -56,7 +56,7 @@ function DomainsTab() {
   const utils = trpc.useUtils();
 
   const { data: userDomainsData, refetch: refetchDomains } = trpc.getUserDomains.useQuery();
-  const domains = userDomainsData?.domains || [];
+  const domains = ((userDomainsData && 'domains' in userDomainsData ? userDomainsData.domains : []) || []) as any[];
 
   const deleteDomainMutation = trpc.deleteDomain.useMutation({
     onSuccess: (data) => {
@@ -64,7 +64,7 @@ function DomainsTab() {
         refetchDomains();
         setActiveMenuId(null);
       } else {
-        setErrorMsg(data.error || "Failed to delete domain");
+        setErrorMsg(('error' in data ? data.error : undefined) || "Failed to delete domain");
       }
     }
   });
@@ -78,7 +78,7 @@ function DomainsTab() {
         setEmail('');
         refetchDomains();
       } else {
-        setErrorMsg(data.error || "Failed to confirm token");
+        setErrorMsg(('error' in data ? data.error : undefined) || "Failed to confirm token");
       }
     }
   });
@@ -86,7 +86,7 @@ function DomainsTab() {
   const sendEmailMutation = trpc.sendDomainVerificationEmail.useMutation({
     onSuccess: (data) => {
       if (!data.success) {
-        setErrorMsg(data.error || "Failed to send verification email.");
+        setErrorMsg(('error' in data ? data.error : undefined) || "Failed to send verification email.");
       } else {
         setErrorMsg('');
         setModalStep('verify');
@@ -101,7 +101,7 @@ function DomainsTab() {
   const verifyDomainMutation = trpc.domainVerification.useMutation({
     onSuccess: (data) => {
       if (!data.success) {
-        setErrorMsg(data.error || "Failed to authenticate domain.");
+        setErrorMsg(('error' in data ? data.error : undefined) || "Failed to authenticate domain.");
         setVerificationResult(null);
       } else {
         setErrorMsg('');
@@ -141,8 +141,8 @@ function DomainsTab() {
     setIsCheckingStatus(prev => ({ ...prev, [domainName]: true }));
     try {
       const result = await utils.domainStatus.fetch({ domain: domainName });
-      if (result.success) {
-        setDomainStatuses(prev => ({ ...prev, [domainName]: result.status }));
+      if (result.success && 'status' in result) {
+        setDomainStatuses(prev => ({ ...prev, [domainName]: result.status as string }));
       }
     } catch (error) {
       console.error(error);
@@ -526,8 +526,14 @@ function ProfilePageContent() {
   const { data: sessionData, refetch: refetchSession } = trpc.auth.getSession.useQuery();
   const user = sessionData?.user;
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'businesses' | 'domains'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'businesses' | 'domains' | 'settings'>('profile');
   const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const handleTabChange = (tab: 'profile' | 'businesses' | 'domains' | 'settings') => {
+    setActiveTab(tab);
+    router.push(`?tab=${tab}`);
+  };
 
   // --- Businesses Tab State ---
   type BusinessView = 'list' | 'add' | 'edit';
@@ -535,15 +541,15 @@ function ProfilePageContent() {
   const [editingBusinessId, setEditingBusinessId] = useState<string | null>(null);
 
   const { data: businessesData, refetch: refetchBusinesses, isLoading: isBusinessesLoading } = trpc.user.getBusinesses.useQuery(undefined, { enabled: activeTab === 'businesses' });
-  const businesses = businessesData?.businesses || [];
+  const businesses = ((businessesData && 'businesses' in businessesData ? businessesData.businesses : []) || []) as any[];
 
   const { activeBusinessId } = useBusinessStore();
 
   useEffect(() => {
     const tab = searchParams.get('tab');
     const editParam = searchParams.get('edit');
-    if (tab === 'businesses') {
-      setActiveTab('businesses');
+    if (tab === 'businesses' || tab === 'profile' || tab === 'domains' || tab === 'settings') {
+      setActiveTab(tab as any);
     }
 
     // Automatically open edit view for the active business if requested from dashboard
@@ -561,7 +567,7 @@ function ProfilePageContent() {
 
   const updateProfileMutation = trpc.user.updateProfile.useMutation({
     onSuccess: (data) => {
-      addToast(data.message, 'success');
+      addToast(('message' in data ? data.message : undefined) || 'Profile updated', 'success');
       refetchSession();
     },
     onError: (error) => addToast(error.message, 'error')
@@ -707,30 +713,37 @@ function ProfilePageContent() {
         <div className="bg-white border border-gray-100 rounded-2xl shadow-sm mb-6 shrink-0 overflow-hidden">
           <div className="flex overflow-x-auto custom-scrollbar">
             <button
-              onClick={() => { setActiveTab('profile'); setBusinessView('list'); }}
+              onClick={() => { handleTabChange('profile'); setBusinessView('list'); }}
               className={`flex items-center px-6 py-4 font-semibold text-sm transition-colors border-b-2 whitespace-nowrap ${activeTab === 'profile' ? 'border-main text-main' : 'border-transparent text-text-dim hover:text-text'}`}
             >
               <User className="w-4 h-4 mr-2" />
               Edit Profile
             </button>
             <button
-              onClick={() => setActiveTab('businesses')}
+              onClick={() => handleTabChange('businesses')}
               className={`flex items-center px-6 py-4 font-semibold text-sm transition-colors border-b-2 whitespace-nowrap ${activeTab === 'businesses' ? 'border-main text-main' : 'border-transparent text-text-dim hover:text-text'}`}
             >
               <Building2 className="w-4 h-4 mr-2" />
               Businesses
             </button>
             <button
-              onClick={() => setActiveTab('domains')}
+              onClick={() => handleTabChange('domains')}
               className={`flex items-center px-6 py-4 font-semibold text-sm transition-colors border-b-2 whitespace-nowrap ${activeTab === 'domains' ? 'border-main text-main' : 'border-transparent text-text-dim hover:text-text'}`}
             >
               <Globe className="w-4 h-4 mr-2" />
               Domains
             </button>
+            <button
+              onClick={() => handleTabChange('settings')}
+              className={`flex items-center px-6 py-4 font-semibold text-sm transition-colors border-b-2 whitespace-nowrap ${activeTab === 'settings' ? 'border-main text-main' : 'border-transparent text-text-dim hover:text-text'}`}
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Settings
+            </button>
           </div>
         </div>
 
-        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm flex-1 overflow-y-auto custom-scrollbar relative">
+        <div className={`bg-white border border-gray-100 rounded-2xl shadow-sm flex-1 relative ${activeTab === 'settings' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
 
           {/* PROFILE TAB */}
           {activeTab === 'profile' && (
@@ -927,6 +940,11 @@ function ProfilePageContent() {
           {/* DOMAINS TAB */}
           {activeTab === 'domains' && (
             <DomainsTab />
+          )}
+
+          {/* SETTINGS TAB */}
+          {activeTab === 'settings' && (
+            <SettingsTab />
           )}
         </div>
       </div>

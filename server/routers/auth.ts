@@ -20,7 +20,8 @@ export const authRouter = router({
     .meta({ openapi: { method: 'POST', path: '/auth/verify', tags: ['auth'], summary: 'Verify registration token' } })
     .input(z.object({
       token: z.string(),
-      forceLogout: z.boolean().optional()
+      forceLogout: z.boolean().optional(),
+      logoutSessionId: z.string().optional()
     }))
     .output(z.object({
       success: z.boolean(),
@@ -28,7 +29,8 @@ export const authRouter = router({
       refreshToken: z.string().optional(),
       user: z.any().optional(),
       message: z.string().optional(),
-      requiresLogout: z.boolean().optional()
+      requiresLogout: z.boolean().optional(),
+      activeSessions: z.array(z.any()).optional()
     }))
     .mutation(authController.verifyRegistration),
 
@@ -38,7 +40,8 @@ export const authRouter = router({
       email: z.string().email(),
       password: z.string(),
       rememberMe: z.boolean().optional(),
-      forceLogout: z.boolean().optional()
+      forceLogout: z.boolean().optional(),
+      logoutSessionId: z.string().optional()
     }))
     .output(z.object({
       success: z.boolean(),
@@ -46,7 +49,8 @@ export const authRouter = router({
       refreshToken: z.string().optional(),
       user: z.any().optional(),
       message: z.string().optional(),
-      requiresLogout: z.boolean().optional()
+      requiresLogout: z.boolean().optional(),
+      activeSessions: z.array(z.any()).optional()
     }))
     .mutation(authController.login),
 

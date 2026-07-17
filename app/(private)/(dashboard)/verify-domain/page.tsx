@@ -17,10 +17,10 @@ function VerifyDomainContent() {
         onSuccess: (data) => {
             if (data.success) {
                 setStatus("success");
-                setMessage(data.message || "Domain verified successfully!");
+                setMessage(('message' in data ? data.message : undefined) || "Domain verified successfully!");
             } else {
                 setStatus("error");
-                setMessage(data.error || "Failed to verify domain.");
+                setMessage(('error' in data ? data.error : undefined) || "Failed to verify domain.");
             }
         },
         onError: (err) => {
