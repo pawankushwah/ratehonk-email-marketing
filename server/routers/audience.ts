@@ -3,6 +3,7 @@ import { router, protectedProcedure } from '../trpc';
 import { 
   getAudienceContacts, 
   addAudienceContact, 
+  importAudienceContacts,
   updateAudienceContactStatus, 
   deleteAudienceContacts 
 } from '../controllers/audienceController';
@@ -34,6 +35,28 @@ export const audienceRouter = router({
     }))
     .mutation(async ({ input }) => {
       const result = await addAudienceContact(input);
+      return { ...result, timestamp: new Date().toISOString() };
+    }),
+
+  importContacts: protectedProcedure
+    .input(z.object({
+      businessId: z.string().uuid(),
+      contacts: z.array(z.object({
+        email: z.string().email(),
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        address: z.any().optional(),
+        phoneNumber: z.string().optional(),
+        birthday: z.string().optional(),
+        company: z.string().optional()
+      })),
+      selectedTagIds: z.array(z.string().uuid()).optional(),
+      tags: z.array(z.string()).optional(),
+      status: z.string().optional(),
+      updateExisting: z.boolean().optional()
+    }))
+    .mutation(async ({ input }) => {
+      const result = await importAudienceContacts(input);
       return { ...result, timestamp: new Date().toISOString() };
     }),
 

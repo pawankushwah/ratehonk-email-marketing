@@ -97,6 +97,131 @@ export const addAudienceContact = async ({
     }
 };
 
+export const importAudienceContacts = async ({
+    businessId,
+    contacts,
+    selectedTagIds,
+    status,
+    updateExisting
+}: {
+    businessId: string;
+    contacts: Array<{
+        email: string;
+        firstName?: string;
+        lastName?: string;
+        address?: any;
+        phoneNumber?: string;
+        birthday?: string;
+        company?: string;
+    }>;
+    selectedTagIds?: string[];
+    tags?: string[];
+    status?: string;
+    updateExisting?: boolean;
+}) => {
+    try {
+        let importedCount = 0;
+        let updatedCount = 0;
+        let skippedCount = 0;
+
+        await db.transaction(async (tx) => {
+            for (const contact of contacts) {
+                if (!contact.email) continue;
+                
+                const existing = await tx.query.audienceContacts.findFirst({
+                    where: and(eq(audienceContacts.email, contact.email), eq(audienceContacts.businessId, businessId))
+                });
+
+                let contactId = '';
+
+                if (existing) {
+                    if (!updateExisting) {
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    const [updated] = await tx.update(audienceContacts).set({
+                        firstName: contact.firstName ?? existing.firstName,
+                        lastName: contact.lastName ?? existing.lastName,
+                        address: contact.address ?? existing.address,
+                        phoneNumber: contact.phoneNumber ?? existing.phoneNumber,
+                        birthday: contact.birthday ?? existing.birthday,
+                        company: contact.company ?? existing.company,
+                        subscriptionStatus: status ?? existing.subscriptionStatus,
+                        source: 'Import',
+                        updatedAt: new Date()
+                    }).where(eq(audienceContacts.id, existing.id)).returning();
+                    
+                    contactId = updated.id;
+                    updatedCount++;
+                } else {
+                    const [inserted] = await tx.insert(audienceContacts).values({
+                        businessId,
+                        email: contact.email,
+                        firstName: contact.firstName,
+                        lastName: contact.lastName,
+                        address: contact.address,
+                        phoneNumber: contact.phoneNumber,
+                        birthday: contact.birthday,
+                        company: contact.company,
+                        subscriptionStatus: status || 'Subscribed',
+                        source: 'Import'
+                    }).returning();
+                    
+                    contactId = inserted.id;
+                    importedCount++;
+                }
+
+                let finalTagIds: string[] = [...(selectedTagIds || [])];
+
+                // Process string tags
+                if (tags && tags.length > 0) {
+                    for (const tagName of tags) {
+                        const tName = tagName.trim();
+                        if (!tName) continue;
+                        
+                        let existingTag = await tx.query.tags.findFirst({
+                            where: and(eq(tags.name, tName), eq(tags.businessId, businessId))
+                        });
+
+                        if (!existingTag) {
+                            const [newTag] = await tx.insert(tags).values({
+                                businessId,
+                                name: tName
+                            }).returning();
+                            existingTag = newTag;
+                        }
+
+                        if (!finalTagIds.includes(existingTag.id)) {
+                            finalTagIds.push(existingTag.id);
+                        }
+                    }
+                }
+
+                if (finalTagIds.length > 0) {
+                    const existingContactTags = await tx.query.contactTags.findMany({
+                        where: eq(contactTags.contactId, contactId)
+                    });
+                    const existingTagIds = new Set(existingContactTags.map(t => t.tagId));
+                    
+                    const tagsToInsert = finalTagIds
+                        .filter(tid => !existingTagIds.has(tid))
+                        .map(tagId => ({ contactId, tagId }));
+                        
+                    if (tagsToInsert.length > 0) {
+                        await tx.insert(contactTags).values(tagsToInsert);
+                    }
+                }
+            }
+        });
+
+        return { success: true, importedCount, updatedCount, skippedCount, message: `Import complete. ${importedCount} added, ${updatedCount} updated, ${skippedCount} skipped.` };
+    } catch (error: any) {
+        console.error('Import error:', error);
+        return { success: false, error: error.message };
+    }
+};
+
 export const updateAudienceContactStatus = async ({
     businessId, contactIds, status
 }: {

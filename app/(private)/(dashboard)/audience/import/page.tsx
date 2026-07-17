@@ -1,30 +1,163 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ChevronLeft, ClipboardPaste, UploadCloud, CheckCircle2, FileText, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ClipboardPaste, UploadCloud, CheckCircle2, FileText, AlertCircle, ChevronRight, Download } from 'lucide-react';
 import Button from '@/app/components/ui/button';
 import { useRouter } from 'next/navigation';
+import Papa from 'papaparse';
+import * as xlsx from 'xlsx';
+import { trpc } from '@/app/trpc';
+import { useBusinessStore } from '@/app/store/useBusinessStore';
+import { useToast } from '@/app/hooks/useToast';
 
 type Step = 'Choose Method' | 'Upload' | 'Match' | 'Status' | 'Review' | 'Confirmation';
 
 const steps: Step[] = ['Choose Method', 'Upload', 'Match', 'Status', 'Review', 'Confirmation'];
 
+const AUDIENCE_FIELDS = [
+  { value: 'email', label: 'Email Address' },
+  { value: 'firstName', label: 'First Name' },
+  { value: 'lastName', label: 'Last Name' },
+  { value: 'phoneNumber', label: 'Phone Number' },
+  { value: 'company', label: 'Company' },
+  { value: 'address', label: 'Address' },
+  { value: 'birthday', label: 'Birthday' },
+];
+
 export default function ImportContactsPage() {
   const router = useRouter();
+  const activeBusinessId = useBusinessStore(state => state.activeBusinessId);
+  const { addToast } = useToast();
+  
   const [currentStep, setCurrentStep] = useState<Step>('Choose Method');
   const [importMethod, setImportMethod] = useState<'paste' | 'upload' | null>(null);
-  
+
   // Step States
   const [pastedText, setPastedText] = useState('');
+  const [parsedData, setParsedData] = useState<string[][]>([]);
+  const [columnMapping, setColumnMapping] = useState<Record<number, string>>({});
   const [selectedStatus, setSelectedStatus] = useState('subscribed');
+  const [tagString, setTagString] = useState('');
+  const [updateExisting, setUpdateExisting] = useState(false);
+  const [hasHeaders, setHasHeaders] = useState(true);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const importMutation = trpc.audience.importContacts.useMutation({
+    onSuccess: () => {
+      addToast('Import successful!', 'success');
+      setCurrentStep('Confirmation');
+    },
+    onError: (err) => {
+      addToast(err.message || 'Import failed', 'error');
+    }
+  });
 
   const handleNext = () => {
+    if (currentStep === 'Upload' && importMethod === 'paste') {
+      if (!pastedText.trim()) return;
+      Papa.parse(pastedText, {
+        complete: (results) => {
+          handleParsedData(results.data as string[][]);
+        },
+        skipEmptyLines: true,
+      });
+      return;
+    }
+    
+    if (currentStep === 'Review') {
+      handleImport();
+      return;
+    }
+
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1]);
     }
+  };
+
+  const handleParsedData = (data: string[][]) => {
+    setParsedData(data);
+    
+    // Auto-map columns if they match standard labels
+    const headers = data[0] || [];
+    const newMapping: Record<number, string> = {};
+    headers.forEach((header, index) => {
+      const h = (header || '').toString().toLowerCase();
+      if (h.includes('email')) newMapping[index] = 'email';
+      else if (h.includes('first') && h.includes('name')) newMapping[index] = 'firstName';
+      else if (h.includes('last') && h.includes('name')) newMapping[index] = 'lastName';
+      else if (h.includes('phone')) newMapping[index] = 'phoneNumber';
+      else if (h.includes('company')) newMapping[index] = 'company';
+      else if (h.includes('address')) newMapping[index] = 'address';
+      else if (h.includes('birthday')) newMapping[index] = 'birthday';
+    });
+    setColumnMapping(newMapping);
+    
+    const currentIndex = steps.indexOf(currentStep);
+    setCurrentStep(steps[currentIndex + 1]);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.name.endsWith('.xlsx')) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const bstr = evt.target?.result;
+        const wb = xlsx.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = xlsx.utils.sheet_to_json(ws, { header: 1 }) as string[][];
+        
+        // Clean empty rows
+        const cleanedData = data.filter(row => row.some(cell => cell !== undefined && cell !== null && cell !== ''));
+        handleParsedData(cleanedData);
+      };
+      reader.readAsBinaryString(file);
+    } else {
+      Papa.parse(file, {
+        complete: (results) => {
+          handleParsedData(results.data as string[][]);
+        },
+        skipEmptyLines: true,
+      });
+    }
+  };
+
+  const handleImport = () => {
+    if (!activeBusinessId) return addToast('No active workspace selected', 'error');
+
+    // Skip the first row if user indicates it contains headers
+    const dataRows = hasHeaders ? parsedData.slice(1) : parsedData;
+    
+    const contacts = dataRows.map(row => {
+      const obj: any = {};
+      Object.entries(columnMapping).forEach(([colIndexStr, field]) => {
+        const colIndex = parseInt(colIndexStr, 10);
+        if (field && row[colIndex]) {
+          obj[field] = row[colIndex];
+        }
+      });
+      return obj;
+    }).filter(c => c.email); // Must have email
+    
+    if (contacts.length === 0) {
+      return addToast('No valid contacts found (missing emails).', 'error');
+    }
+
+    const tags = tagString.split(',').map(t => t.trim()).filter(Boolean);
+    
+    importMutation.mutate({
+      businessId: activeBusinessId,
+      contacts,
+      tags,
+      status: selectedStatus,
+      updateExisting
+    });
   };
 
   const handleBack = () => {
@@ -45,19 +178,19 @@ export default function ImportContactsPage() {
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0 bg-white">
         <div className="flex items-center gap-6">
-          <button 
+          <button
             onClick={handleBack}
             className="text-gray-500 hover:text-gray-900 transition-colors"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          
+
           <div className="flex items-center gap-4">
-            <Image 
-              src="/ratehonk-logo.png" 
-              alt="Ratehonk Logo" 
-              width={32} 
-              height={32} 
+            <Image
+              src="/ratehonk-logo.png"
+              alt="Ratehonk Logo"
+              width={50}
+              height={50}
               className="object-contain"
             />
             <div className="flex flex-col">
@@ -66,10 +199,10 @@ export default function ImportContactsPage() {
                 {steps.map((step, index) => {
                   const isActive = currentStep === step;
                   const isPast = steps.indexOf(currentStep) > index;
-                  
+
                   return (
                     <React.Fragment key={step}>
-                      <span 
+                      <span
                         className={`
                           ${isActive ? 'font-semibold text-gray-900 underline underline-offset-4 decoration-2 decoration-[#007c89]' : ''}
                           ${!isActive && isPast ? 'text-gray-900' : ''}
@@ -78,7 +211,7 @@ export default function ImportContactsPage() {
                         {step}
                       </span>
                       {index < steps.length - 1 && (
-                        <span className="text-gray-300">&gt;</span>
+                        <ChevronRight className='w-5 h-5 text-gray-300' />
                       )}
                     </React.Fragment>
                   );
@@ -88,8 +221,8 @@ export default function ImportContactsPage() {
           </div>
         </div>
 
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           onClick={handleExit}
           className="text-gray-600 border-gray-300 hover:bg-gray-50"
         >
@@ -99,20 +232,21 @@ export default function ImportContactsPage() {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto bg-white flex flex-col items-center pt-12 px-6 pb-24">
+        
         {/* 1. CHOOSE METHOD */}
         {currentStep === 'Choose Method' && (
           <div className="w-full max-w-4xl">
             <h2 className="text-[32px] font-semibold text-[#241c15] mb-8 text-center md:text-left">
               Add your contacts
             </h2>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div 
+              <div
                 onClick={() => setImportMethod('paste')}
                 className={`
                   border-2 rounded-lg p-10 flex flex-col items-center justify-center cursor-pointer transition-all h-[260px]
-                  ${importMethod === 'paste' 
-                    ? 'border-[#007c89] bg-[#007c89]/5' 
+                  ${importMethod === 'paste'
+                    ? 'border-[#007c89] bg-[#007c89]/5'
                     : 'border-dashed border-gray-200 hover:border-[#007c89] hover:bg-gray-50'
                   }
                 `}
@@ -126,12 +260,12 @@ export default function ImportContactsPage() {
                 </p>
               </div>
 
-              <div 
+              <div
                 onClick={() => setImportMethod('upload')}
                 className={`
                   border-2 rounded-lg p-10 flex flex-col items-center justify-center cursor-pointer transition-all h-[260px]
-                  ${importMethod === 'upload' 
-                    ? 'border-[#007c89] bg-[#007c89]/5' 
+                  ${importMethod === 'upload'
+                    ? 'border-[#007c89] bg-[#007c89]/5'
                     : 'bg-[#f6f6f4] border-transparent hover:border-[#007c89] hover:bg-gray-50'
                   }
                 `}
@@ -154,11 +288,11 @@ export default function ImportContactsPage() {
             <h2 className="text-[32px] font-semibold text-[#241c15] mb-8">
               {importMethod === 'paste' ? 'Paste your contacts' : 'Upload your file'}
             </h2>
-            
+
             {importMethod === 'paste' ? (
               <div className="w-full">
                 <p className="text-gray-600 mb-4">Paste your contact information below. You can include email addresses, names, and other details.</p>
-                <textarea 
+                <textarea
                   className="w-full h-64 p-4 border border-gray-300 rounded-md focus:ring-[#007c89] focus:border-[#007c89] resize-none"
                   placeholder="name@example.com, John, Doe&#10;another@example.com, Jane, Smith"
                   value={pastedText}
@@ -167,13 +301,35 @@ export default function ImportContactsPage() {
               </div>
             ) : (
               <div className="w-full border-2 border-dashed border-gray-300 rounded-lg p-16 flex flex-col items-center justify-center bg-gray-50">
+                <input 
+                  type="file" 
+                  accept=".csv, .txt, .xlsx" 
+                  className="hidden" 
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                />
                 <FileText className="w-12 h-12 text-gray-400 mb-4" />
-                <p className="text-lg font-medium text-gray-900 mb-2">Drag and drop your file here</p>
-                <p className="text-gray-500 mb-6">or</p>
-                <Button variant="outline" className="border-[#007c89] text-[#007c89]">
+                <p className="text-lg font-medium text-gray-900 mb-2">Select your file</p>
+                <Button 
+                  variant="outline" 
+                  className="border-[#007c89] text-[#007c89] mt-2"
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   Browse to upload
                 </Button>
                 <p className="text-xs text-gray-400 mt-4">Supported formats: CSV, TXT, XLSX</p>
+                
+                <div className="mt-8 pt-8 border-t border-gray-200 w-full flex flex-col items-center">
+                  <p className="text-sm text-gray-500 mb-3">Need a template?</p>
+                  <div className="flex gap-4">
+                    <a href="/templates/contacts-template.csv" download className="flex items-center text-sm text-[#007c89] hover:underline">
+                      <Download className="w-4 h-4 mr-1" /> Download CSV 
+                    </a>
+                    <a href="/templates/contacts-template.xlsx" download className="flex items-center text-sm text-[#007c89] hover:underline">
+                      <Download className="w-4 h-4 mr-1" /> Download XLSX
+                    </a>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -185,8 +341,21 @@ export default function ImportContactsPage() {
             <h2 className="text-[32px] font-semibold text-[#241c15] mb-2">
               Match your columns
             </h2>
-            <p className="text-gray-600 mb-8">Match the columns from your imported data to the fields in your audience.</p>
-            
+            <p className="text-gray-600 mb-6">Match the columns from your imported data to the fields in your audience.</p>
+
+            <div className="flex items-center space-x-2 mb-4">
+              <input 
+                type="checkbox" 
+                id="hasHeaders"
+                checked={hasHeaders}
+                onChange={(e) => setHasHeaders(e.target.checked)}
+                className="rounded border-gray-300 text-[#007c89] focus:ring-[#007c89]"
+              />
+              <label htmlFor="hasHeaders" className="text-sm text-gray-700">
+                First row contains column headers
+              </label>
+            </div>
+
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="w-full text-left bg-white">
                 <thead className="bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-500">
@@ -197,28 +366,28 @@ export default function ImportContactsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  <tr>
-                    <td className="p-4 font-medium text-gray-900">Email Address</td>
-                    <td className="p-4 text-gray-600">user@example.com</td>
-                    <td className="p-4">
-                      <select className="border border-gray-300 rounded-md p-2 w-full max-w-xs focus:ring-[#007c89] focus:border-[#007c89]">
-                        <option>Email Address</option>
-                        <option>First Name</option>
-                        <option>Last Name</option>
-                      </select>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="p-4 font-medium text-gray-900">First Name</td>
-                    <td className="p-4 text-gray-600">John</td>
-                    <td className="p-4">
-                      <select className="border border-gray-300 rounded-md p-2 w-full max-w-xs focus:ring-[#007c89] focus:border-[#007c89]">
-                        <option>First Name</option>
-                        <option>Last Name</option>
-                        <option>Email Address</option>
-                      </select>
-                    </td>
-                  </tr>
+                  {(parsedData[0] || []).map((header, index) => (
+                    <tr key={index}>
+                      <td className="p-4 font-medium text-gray-900">
+                        {hasHeaders ? header : `Column ${index + 1}`}
+                      </td>
+                      <td className="p-4 text-gray-600 truncate max-w-[200px]">
+                        {hasHeaders ? (parsedData[1]?.[index] || '-') : (header || '-')}
+                      </td>
+                      <td className="p-4">
+                        <select 
+                          value={columnMapping[index] || ''}
+                          onChange={(e) => setColumnMapping(prev => ({ ...prev, [index]: e.target.value }))}
+                          className="border border-gray-300 rounded-md p-2 w-full max-w-xs focus:ring-[#007c89] focus:border-[#007c89]"
+                        >
+                          <option value="">Do not import</option>
+                          {AUDIENCE_FIELDS.map(f => (
+                            <option key={f.value} value={f.value}>{f.label}</option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -232,17 +401,17 @@ export default function ImportContactsPage() {
               Organize your contacts
             </h2>
             <p className="text-gray-600 mb-8">Set the status and tags for these imported contacts.</p>
-            
+
             <div className="max-w-xl">
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Select a status for these contacts</label>
                 <div className="space-y-3">
                   {['subscribed', 'unsubscribed', 'non-subscribed'].map((status) => (
                     <label key={status} className={`flex items-start p-4 border rounded-md cursor-pointer transition-colors ${selectedStatus === status ? 'border-[#007c89] bg-[#007c89]/5' : 'border-gray-200 hover:bg-gray-50'}`}>
-                      <input 
-                        type="radio" 
-                        name="status" 
-                        value={status} 
+                      <input
+                        type="radio"
+                        name="status"
+                        value={status}
                         checked={selectedStatus === status}
                         onChange={(e) => setSelectedStatus(e.target.value)}
                         className="mt-1 h-4 w-4 text-[#007c89] border-gray-300 focus:ring-[#007c89]"
@@ -260,13 +429,28 @@ export default function ImportContactsPage() {
                 </div>
               </div>
 
-              <div>
+              <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Tag your contacts (Optional)</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. 2024 Trade Show, Summer Promo" 
+                <input
+                  type="text"
+                  placeholder="e.g. 2024 Trade Show, Summer Promo"
+                  value={tagString}
+                  onChange={(e) => setTagString(e.target.value)}
                   className="w-full p-3 border border-gray-300 rounded-md focus:ring-[#007c89] focus:border-[#007c89]"
                 />
+              </div>
+
+              <div className="flex items-center space-x-2 mt-4">
+                <input 
+                  type="checkbox" 
+                  id="updateExisting"
+                  checked={updateExisting}
+                  onChange={(e) => setUpdateExisting(e.target.checked)}
+                  className="rounded border-gray-300 text-[#007c89] focus:ring-[#007c89]"
+                />
+                <label htmlFor="updateExisting" className="text-sm text-gray-700">
+                  Update existing contacts if they are already in your audience
+                </label>
               </div>
             </div>
           </div>
@@ -279,7 +463,7 @@ export default function ImportContactsPage() {
               Review your import
             </h2>
             <p className="text-gray-600 mb-8">You're almost done! Please review the details below before completing your import.</p>
-            
+
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 space-y-6">
               <div className="flex items-start">
                 <CheckCircle2 className="w-6 h-6 text-green-500 mt-0.5 mr-3 shrink-0" />
@@ -299,7 +483,7 @@ export default function ImportContactsPage() {
                 <CheckCircle2 className="w-6 h-6 text-green-500 mt-0.5 mr-3 shrink-0" />
                 <div>
                   <h4 className="text-base font-semibold text-gray-900">Fields Matched</h4>
-                  <p className="text-gray-600 text-sm mt-1">2 columns mapped</p>
+                  <p className="text-gray-600 text-sm mt-1">{Object.values(columnMapping).filter(Boolean).length} columns mapped</p>
                 </div>
               </div>
             </div>
@@ -321,14 +505,11 @@ export default function ImportContactsPage() {
               Your import was successful!
             </h2>
             <p className="text-gray-600 text-lg mb-8 max-w-xl mx-auto">
-              We're processing your contacts in the background. You'll receive a notification once everything is fully imported and ready to use.
+              Your contacts have been fully imported and are ready to use.
             </p>
             <div className="flex items-center justify-center gap-4">
               <Button variant="outline" onClick={handleExit}>
                 Go to Audience
-              </Button>
-              <Button className="!bg-[#007c89] hover:!bg-[#006570] !text-white" onClick={handleExit}>
-                Create a Campaign
               </Button>
             </div>
           </div>
@@ -340,27 +521,29 @@ export default function ImportContactsPage() {
         <footer className="border-t border-gray-200 p-6 bg-white shrink-0 mt-auto">
           <div className="w-full max-w-4xl mx-auto flex justify-between items-center px-6 md:px-0">
             {currentStep !== 'Choose Method' ? (
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handleBack}
                 className="px-6"
+                disabled={importMutation.isPending}
               >
                 Back
               </Button>
             ) : (
               <div></div>
             )}
-            
-            <Button 
+
+            <Button
               size="lg"
               className="!bg-[#007c89] hover:!bg-[#006570] !text-white px-8"
               disabled={
                 (currentStep === 'Choose Method' && !importMethod) ||
-                (currentStep === 'Upload' && importMethod === 'paste' && !pastedText)
+                (currentStep === 'Upload' && importMethod === 'paste' && !pastedText) ||
+                importMutation.isPending
               }
               onClick={handleNext}
             >
-              {currentStep === 'Review' ? 'Import Contacts' : 'Continue'}
+              {importMutation.isPending ? 'Importing...' : currentStep === 'Review' ? 'Import Contacts' : 'Continue'}
             </Button>
           </div>
         </footer>
