@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { 
   Sparkles, 
   Calendar, 
@@ -29,6 +30,7 @@ interface EmailTemplate {
 
 export default function CampaignsEmailTemplatesPage() {
   const { addToast } = useToast();
+  const router = useRouter();
   const activeBusinessId = useBusinessStore(state => state.activeBusinessId);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
@@ -38,12 +40,47 @@ export default function CampaignsEmailTemplatesPage() {
     { enabled: !!activeBusinessId }
   );
 
+  // Delete Template Mutation
+  const deleteMutation = trpc.emailtemp.deleteTemplate.useMutation({
+    onSuccess: () => {
+      addToast('Email template deleted successfully!', 'success');
+      refetch();
+    },
+    onError: (error) => {
+      addToast(error.message || 'Failed to delete template.', 'error');
+    }
+  });
+
   const handleUseTemplate = (template: EmailTemplate) => {
-    addToast(`Loading "${template.name}" into campaign builder...`, 'success');
+    if (template.id.startsWith('tpl-')) {
+      router.push(`/campaigns/email-templates/builder?id=${template.id}`);
+    } else {
+      router.push(`/campaigns/email-templates/builder?id=${template.id}`);
+    }
   };
 
   const handleMenuAction = (action: string, template: EmailTemplate) => {
     setActiveMenuId(null);
+    
+    if (action === 'Edit') {
+      router.push(`/campaigns/email-templates/builder?id=${template.id}`);
+      return;
+    }
+
+    if (action === 'Delete') {
+      if (template.id.startsWith('tpl-')) {
+        addToast('System templates cannot be deleted.', 'error');
+        return;
+      }
+      if (confirm(`Are you sure you want to delete the template "${template.name}"?`)) {
+        deleteMutation.mutate({
+          id: template.id,
+          businessId: activeBusinessId || ''
+        });
+      }
+      return;
+    }
+
     addToast(`${action} for "${template.name}" will be supported in future steps.`, 'success');
   };
 

@@ -1,14 +1,14 @@
 "use client";
 
 import React from 'react';
-import { Monitor, Smartphone, Sparkles, AlertCircle, RefreshCw, CheckSquare } from 'lucide-react';
+import { Monitor, Smartphone, Sparkles, AlertCircle, RefreshCw, Save } from 'lucide-react';
 
 interface PreviewPanelProps {
   hasTemplate: boolean;
   isGenerating: boolean;
   device: 'desktop' | 'mobile';
   onDeviceChange: (device: 'desktop' | 'mobile') => void;
-  onUseTemplate: () => void;
+  onSaveTemplate: () => void;
   onRegenerate: () => void;
   lastPrompt: string;
   htmlContent: string | null;
@@ -19,7 +19,7 @@ export default function PreviewPanel({
   isGenerating,
   device,
   onDeviceChange,
-  onUseTemplate,
+  onSaveTemplate,
   onRegenerate,
   lastPrompt,
   htmlContent
@@ -29,7 +29,7 @@ export default function PreviewPanel({
   const isRenderFailed = hasTemplate && !isGenerating && !htmlContent;
 
   return (
-    <div className="bg-white border border-border rounded-xl shadow-sm flex flex-col h-[650px] overflow-hidden">
+    <div className="bg-white border border-border rounded-xl shadow-sm flex flex-col h-[750px] overflow-hidden">
       {/* Panel Header & Device Toggle */}
       <div className="px-6 py-3 border-b border-border flex items-center justify-between bg-gray-50/50">
         <h3 className="text-base font-bold text-text">Live Preview</h3>
@@ -122,7 +122,7 @@ export default function PreviewPanel({
             className={`bg-white rounded-xl border border-border shadow-md overflow-hidden transition-all duration-300 ${
               device === 'mobile'
                 ? 'w-[360px] border-4 border-gray-800 rounded-[2rem] shadow-xl relative bg-white pb-3 pt-2 px-1'
-                : 'w-full max-w-xl'
+                : 'w-full max-w-3xl lg:max-w-4xl'
             }`}
           >
             {device === 'mobile' && (
@@ -141,7 +141,7 @@ export default function PreviewPanel({
                 title="Email Preview"
                 srcDoc={htmlContent || '<html><body><p>No preview data available</p></body></html>'}
                 sandbox="" // Empty sandbox strictly disables JS execution
-                className="w-full h-[450px] border-0 bg-white"
+                className="w-full h-[540px] border-0 bg-white"
               />
             </div>
           </div>
@@ -163,7 +163,7 @@ export default function PreviewPanel({
         </button>
 
         <button
-          onClick={onUseTemplate}
+          onClick={onSaveTemplate}
           disabled={!hasTemplate || isGenerating || isRenderFailed}
           className={`flex items-center gap-1.5 px-5 py-2 text-sm font-semibold rounded-lg text-white shadow-sm transition-all ${
             !hasTemplate || isGenerating || isRenderFailed
@@ -171,7 +171,7 @@ export default function PreviewPanel({
               : 'bg-[#007c89] hover:bg-[#006570] hover:shadow-md hover:shadow-[#007c89]/10'
           }`}
         >
-          <CheckSquare className="w-4 h-4" /> Use This Template
+          <Save className="w-4 h-4" /> Save Template
         </button>
       </div>
     </div>

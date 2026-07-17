@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import ChatPanel, { ChatMessage } from './components/ChatPanel';
 import PreviewPanel from './components/PreviewPanel';
@@ -10,9 +10,11 @@ import { useToast } from '@/app/hooks/useToast';
 import { trpc } from '@/app/trpc';
 import { useBusinessStore } from '@/app/store/useBusinessStore';
 
-export default function AIEmailTemplateBuilderPage() {
+function AIEmailTemplateBuilderContent() {
   const { addToast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const templateId = searchParams.get('id') || searchParams.get('templateId');
   const utils = trpc.useUtils();
   const activeBusinessId = useBusinessStore(state => state.activeBusinessId);
   
@@ -30,6 +32,37 @@ export default function AIEmailTemplateBuilderPage() {
   const [saveCategory, setSaveCategory] = useState('General');
   const [saveDescription, setSaveDescription] = useState('');
   const [nameError, setNameError] = useState('');
+
+  // Fetch template data if templateId is provided (Edit mode)
+  const { data: templateData, error: templateError } = trpc.emailtemp.getTemplateById.useQuery(
+    { id: templateId || '', businessId: activeBusinessId || '' },
+    { enabled: !!templateId && !!activeBusinessId }
+  );
+
+  useEffect(() => {
+    if (templateData?.template) {
+      setGeneratedHtml(templateData.template.htmlContent);
+      setHasTemplate(true);
+      setSaveName(templateData.template.name);
+      setSaveDescription(templateData.template.description || '');
+      setSaveCategory(templateData.template.category || 'General');
+      
+      setMessages([
+        {
+          id: `sys-load-${Date.now()}`,
+          role: 'assistant',
+          content: `Loaded existing template "${templateData.template.name}". You can now edit it or refine it using the AI assistant.`,
+          timestamp: new Date()
+        }
+      ]);
+    }
+  }, [templateData]);
+
+  useEffect(() => {
+    if (templateError) {
+      addToast(`Failed to load email template: ${templateError.message}`, 'error');
+    }
+  }, [templateError]);
 
   // tRPC Mutation for Template Generation
   const generateMutation = trpc.emailtemp.generateTemplate.useMutation({
@@ -84,6 +117,22 @@ export default function AIEmailTemplateBuilderPage() {
       addToast(error.message || 'Failed to save email template.', 'error');
     }
   });
+
+  // tRPC Mutation for Updating Template
+  const updateMutation = trpc.emailtemp.updateTemplate.useMutation({
+    onSuccess: async () => {
+      addToast('Email template updated successfully!', 'success');
+      setIsSaveModalOpen(false);
+      // Invalidate template queries for hot updates on return
+      await utils.emailtemp.getTemplates.invalidate();
+      router.push('/campaigns/email-templates');
+    },
+    onError: (error) => {
+      addToast(error.message || 'Failed to update email template.', 'error');
+    }
+  });
+
+  const isSaving = createMutation.isPending || updateMutation.isPending;
 
   // Handlers
   const handleSendMessage = (text: string) => {
@@ -143,13 +192,24 @@ export default function AIEmailTemplateBuilderPage() {
       return;
     }
 
-    createMutation.mutate({
-      businessId: activeBusinessId,
-      name: saveName,
-      category: saveCategory,
-      description: saveDescription,
-      htmlContent: generatedHtml
-    });
+    if (templateId && !templateId.startsWith('tpl-')) {
+      updateMutation.mutate({
+        id: templateId,
+        businessId: activeBusinessId,
+        name: saveName,
+        category: saveCategory,
+        description: saveDescription,
+        htmlContent: generatedHtml
+      });
+    } else {
+      createMutation.mutate({
+        businessId: activeBusinessId,
+        name: saveName,
+        category: saveCategory,
+        description: saveDescription,
+        htmlContent: generatedHtml
+      });
+    }
   };
 
   const handleRegenerate = () => {
@@ -226,7 +286,7 @@ export default function AIEmailTemplateBuilderPage() {
           isGenerating={isGenerating}
           device={device}
           onDeviceChange={setDevice}
-          onUseTemplate={handleUseTemplate}
+          onSaveTemplate={handleUseTemplate}
           onRegenerate={handleRegenerate}
           lastPrompt={lastPrompt}
           htmlContent={generatedHtml}
@@ -238,9 +298,28 @@ export default function AIEmailTemplateBuilderPage() {
       {isSaveModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl overflow-hidden shadow-2xl w-full max-w-md flex flex-col relative animate-in zoom-in-95 duration-150 p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-text mb-4">Save AI Email Template</h3>
+            <h3 className="text-lg font-bold text-text mb-4">
+              {templateId ? 'Update Email Template' : 'Save AI Email Template'}
+            </h3>
             
             <div className="space-y-4">
+              {/* Template Preview (acting as image field) */}
+              <div>
+                <label className="block text-xs font-bold text-text-dim uppercase tracking-wider mb-1.5">
+                  Template Preview (Thumbnail)
+                </label>
+                <div className="border border-border rounded-xl overflow-hidden bg-gray-50 h-36 relative shadow-inner flex items-center justify-center">
+                  <div className="absolute inset-0 origin-top-left scale-[0.4] w-[250%] h-[250%] pointer-events-none bg-white">
+                    <iframe
+                      title="Email Modal Thumbnail"
+                      srcDoc={generatedHtml || '<html><body><p style="padding: 20px; font-family: sans-serif; color: #999;">No preview available</p></body></html>'}
+                      sandbox=""
+                      className="w-full h-full border-0 bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Name */}
               <div>
                 <label className="block text-xs font-bold text-text-dim uppercase tracking-wider mb-1.5">
@@ -259,7 +338,7 @@ export default function AIEmailTemplateBuilderPage() {
                       ? 'border-red-500 focus:ring-red-500/20' 
                       : 'border-border focus:ring-sky-500/20'
                   }`}
-                  disabled={createMutation.isPending}
+                  disabled={isSaving}
                 />
                 {nameError && (
                   <p className="text-red-500 text-xs mt-1">{nameError}</p>
@@ -277,7 +356,7 @@ export default function AIEmailTemplateBuilderPage() {
                   onChange={(e) => setSaveCategory(e.target.value)}
                   placeholder="e.g. Marketing, Newsletter"
                   className="w-full p-2.5 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all"
-                  disabled={createMutation.isPending}
+                  disabled={isSaving}
                 />
               </div>
 
@@ -292,7 +371,7 @@ export default function AIEmailTemplateBuilderPage() {
                   placeholder="Provide a brief summary of when to use this template..."
                   rows={3}
                   className="w-full p-2.5 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 resize-none transition-all"
-                  disabled={createMutation.isPending}
+                  disabled={isSaving}
                 />
               </div>
             </div>
@@ -303,21 +382,21 @@ export default function AIEmailTemplateBuilderPage() {
                 type="button"
                 onClick={() => setIsSaveModalOpen(false)}
                 className="px-4 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-gray-50 transition-all text-text"
-                disabled={createMutation.isPending}
+                disabled={isSaving}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmSave}
-                disabled={createMutation.isPending}
+                disabled={isSaving}
                 className={`flex items-center justify-center px-5 py-2 text-sm font-semibold rounded-lg text-white shadow-sm transition-all ${
-                  createMutation.isPending
+                  isSaving
                     ? 'bg-gray-300 cursor-not-allowed shadow-none'
                     : 'bg-[#007c89] hover:bg-[#006570] hover:shadow-md'
                 }`}
               >
-                {createMutation.isPending ? 'Saving...' : 'Save Template'}
+                {isSaving ? 'Saving...' : templateId ? 'Update Template' : 'Save Template'}
               </button>
             </div>
           </div>
@@ -325,5 +404,17 @@ export default function AIEmailTemplateBuilderPage() {
       )}
 
     </div>
+  );
+}
+
+export default function AIEmailTemplateBuilderPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[60vh] text-text-dim text-sm font-semibold">
+        Loading AI template builder...
+      </div>
+    }>
+      <AIEmailTemplateBuilderContent />
+    </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { emailTemplates } from '../db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import { generateHTMLFromPrompt } from '../services/geminiService';
 
 export interface EmailTemplate {
@@ -137,5 +137,117 @@ export const generateEmailTemplate = async ({ prompt }: { prompt: string }) => {
     }
     
     throw new Error(error.message || 'An unexpected error occurred during email generation.');
+  }
+};
+
+export const getTemplateById = async ({ id, businessId }: { id: string; businessId: string }) => {
+  try {
+    if (id.startsWith('tpl-')) {
+      const systemTpl = SYSTEM_TEMPLATES.find((t) => t.id === id);
+      if (systemTpl) {
+        return {
+          success: true,
+          template: systemTpl,
+        };
+      }
+    }
+
+    const [template] = await db
+      .select()
+      .from(emailTemplates)
+      .where(and(eq(emailTemplates.id, id), eq(emailTemplates.businessId, businessId)))
+      .limit(1);
+
+    if (!template) {
+      throw new Error('Template not found');
+    }
+
+    return {
+      success: true,
+      template: {
+        id: template.id,
+        name: template.name,
+        category: template.category || 'General',
+        description: template.description || '',
+        htmlContent: template.htmlContent,
+        updatedAt: template.updatedAt.toISOString(),
+      }
+    };
+  } catch (error: any) {
+    console.error('[emailtempController] Error fetching template by ID:', error);
+    throw new Error(error.message || 'Failed to fetch email template');
+  }
+};
+
+export const updateEmailTemplate = async ({
+  id,
+  businessId,
+  name,
+  category,
+  description,
+  htmlContent
+}: {
+  id: string;
+  businessId: string;
+  name: string;
+  category?: string;
+  description?: string;
+  htmlContent: string;
+}) => {
+  try {
+    const [updatedTpl] = await db
+      .update(emailTemplates)
+      .set({
+        name,
+        category: category || 'General',
+        description: description || '',
+        htmlContent,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(emailTemplates.id, id), eq(emailTemplates.businessId, businessId)))
+      .returning();
+
+    if (!updatedTpl) {
+      throw new Error('Template not found or not owned by this business');
+    }
+
+    return {
+      success: true,
+      template: {
+        id: updatedTpl.id,
+        name: updatedTpl.name,
+        category: updatedTpl.category || 'General',
+        description: updatedTpl.description || '',
+        htmlContent: updatedTpl.htmlContent,
+        updatedAt: updatedTpl.updatedAt.toISOString(),
+      }
+    };
+  } catch (error: any) {
+    console.error('[emailtempController] Error updating template:', error);
+    throw new Error(error.message || 'Failed to update email template');
+  }
+};
+
+export const deleteEmailTemplate = async ({
+  id,
+  businessId
+}: {
+  id: string;
+  businessId: string;
+}) => {
+  try {
+    const [deletedTpl] = await db
+      .delete(emailTemplates)
+      .where(and(eq(emailTemplates.id, id), eq(emailTemplates.businessId, businessId)))
+      .returning();
+
+    if (!deletedTpl) {
+      throw new Error('Template not found or not owned by this business');
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[emailtempController] Error deleting template:', error);
+    throw new Error(error.message || 'Failed to delete email template');
   }
 };
