@@ -1,5 +1,9 @@
-import ComingSoon from "@/app/components/dashboard/ComingSoon";
+import React from 'react'
 
-export default function CampaignsPage() {
-  return <ComingSoon />;
+const page = () => {
+  return (
+    <div>Campaigns</div>
+  )
 }
+
+export default page

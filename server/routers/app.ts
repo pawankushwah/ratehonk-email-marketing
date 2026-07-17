@@ -11,6 +11,7 @@ import { uploadRouter } from './upload';
 import { audienceRouter } from './audience';
 import { tagsRouter } from './tags';
 import { apiKeyRouter } from './apiKey';
+import { emailtempRouter } from './emailtemp';
 
 export const appRouter = router({
   auth: authRouter,
@@ -22,6 +23,7 @@ export const appRouter = router({
   audience: audienceRouter,
   tags: tagsRouter,
   apiKeys: apiKeyRouter,
+  emailtemp: emailtempRouter,
 
   healthCheck: publicProcedure
     .meta({
