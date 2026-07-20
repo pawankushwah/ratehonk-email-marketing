@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
-import { verifyDomain, checkDomainStatus, sendDomainVerificationEmail, confirmDomainToken, getUserDomains, deleteDomain } from '../controllers/domainController';
+import { verifyDomain, checkDomainStatus, sendDomainVerificationEmail, confirmDomainToken, getUserDomains, deleteDomain, connectDomain } from '../controllers/domainController';
 import { sendCampaignEmail } from '../controllers/emailController';
 import { authRouter } from './auth';
 import { contactRouter } from './contact';
@@ -17,7 +17,7 @@ export const appRouter = router({
   auth: authRouter,
   contact: contactRouter,
   onboarding: onboardingRouter,
-  user: userRouter,
+  user: userRouter, // with business apis
   saas: saasRouter,
   upload: uploadRouter,
   audience: audienceRouter,
@@ -59,6 +59,28 @@ export const appRouter = router({
       const { domain } = input;
       const result = await verifyDomain({ domain, userId: ctx.user.userId });
       console.log("result", result);
+      return {
+        ...result,
+        timestamp: new Date().toISOString()
+      };
+    }),
+
+  connectDomain: protectedProcedure
+    .meta({
+      openapi: {
+        method: 'POST',
+        path: '/domains/connect',
+        tags: ['Domain'],
+        summary: 'Connect a custom domain and generate DNS records',
+      },
+    })
+    .input(z.object({ domain: z.string(), businessId: z.string().optional() }))
+    .output(z.any())
+    .mutation(async ({ input, ctx }) => {
+      const { domain, businessId } = input;
+      // Use provided businessId or fallback to active businessId from context
+      const targetBusinessId = businessId || ctx.user.businessId;
+      const result = await connectDomain({ domain, userId: ctx.user.userId, businessId: targetBusinessId });
       return {
         ...result,
         timestamp: new Date().toISOString()
@@ -149,13 +171,13 @@ export const appRouter = router({
       };
     }),
 
-  sendEmail: publicProcedure
+  sendEmail: protectedProcedure
     .meta({
       openapi: {
         method: 'POST',
         path: '/emails/send',
         tags: ['Emails'],
-        summary: 'Send a campaign email',
+        summary: 'Send a campaign email securely with tenant configuration',
       },
     })
     .input(z.object({
@@ -165,8 +187,14 @@ export const appRouter = router({
       htmlBody: z.string(),
     }))
     .output(z.any())
-    .mutation(async ({ input }) => {
-      const result = await sendCampaignEmail(input);
+    .mutation(async ({ input, ctx }) => {
+      const result = await sendCampaignEmail({
+        tenantId: ctx.user.businessId,
+        fromEmail: input.fromEmail,
+        toEmail: input.toEmail,
+        subject: input.subject,
+        htmlBody: input.htmlBody
+      });
       return {
         ...result,
         timestamp: new Date().toISOString()

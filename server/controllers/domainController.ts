@@ -1,12 +1,14 @@
 // controllers/domainController.ts
 import { VerifyDomainDkimCommand, GetIdentityVerificationAttributesCommand } from "@aws-sdk/client-ses";
-import { sesClient } from "../utils/sesClient";
+import { GetEmailIdentityCommand, DeleteEmailIdentityCommand, CreateEmailIdentityCommand } from "@aws-sdk/client-sesv2";
+import { sesClient, sesv2Client } from "../utils/sesClient";
+import { setupTenantDomain } from "../services/domainVerify";
 import dns from "dns/promises";
 import crypto from "crypto";
 import { db } from "../db";
 import { domainVerifications } from "../db/schema";
 import { emailQueue } from "../queue/emailQueue";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 
 // Restricted generic email providers
 const RESTRICTED_DOMAINS = [
@@ -141,6 +143,23 @@ export const deleteDomain = async ({ id, userId }: { id: string; userId: string 
             return { success: false, error: "Domain not found or unauthorized." };
         }
 
+        // Check if anyone else is using this domain before deleting from AWS
+        const otherUsers = await db.query.domainVerifications.findMany({
+            where: and(eq(domainVerifications.domain, record.domain))
+        });
+
+        if (otherUsers.length <= 1) {
+            // No one else is using this domain in our DB, safely delete from AWS SES
+            try {
+                const command = new DeleteEmailIdentityCommand({ EmailIdentity: record.domain });
+                await sesv2Client.send(command);
+            } catch (awsError: any) {
+                if (awsError.name !== 'NotFoundException') {
+                    console.error("Failed to delete email identity from AWS SES:", awsError);
+                }
+            }
+        }
+
         await db.delete(domainVerifications).where(eq(domainVerifications.id, id));
 
         return { success: true, message: "Domain deleted successfully." };
@@ -181,6 +200,21 @@ export const verifyDomain = async ({ domain, userId }: { domain: string, userId:
             };
         }
 
+        // Prevent domain hijacking for active domains
+        const otherUserDomain = await db.query.domainVerifications.findFirst({
+            where: and(
+                eq(domainVerifications.domain, lowerDomain),
+                ne(domainVerifications.userId, userId)
+            )
+        });
+
+        if (otherUserDomain) {
+            return {
+                success: false,
+                error: "This domain is already registered by another account. Please contact support to claim it."
+            };
+        }
+
         const provider = await identifyDnsProvider(lowerDomain);
 
         const command = new VerifyDomainDkimCommand({ Domain: lowerDomain });
@@ -202,8 +236,6 @@ export const verifyDomain = async ({ domain, userId }: { domain: string, userId:
             await db.insert(domainVerifications).values({
                 userId,
                 domain: lowerDomain,
-                email: `admin@${lowerDomain}`, // placeholder email for direct auth
-                token: 'direct-auth', // placeholder token for direct auth
                 status: 'verified' // marked as verified since we bypassed email
             });
         }
@@ -222,12 +254,120 @@ export const verifyDomain = async ({ domain, userId }: { domain: string, userId:
 // 2. Check Domain Verification Status
 export const checkDomainStatus = async ({ domain }: { domain: string }) => {
     try {
-        const command = new GetIdentityVerificationAttributesCommand({ Identities: [domain] });
-        const response = await sesClient.send(command);
+        const command = new GetEmailIdentityCommand({ EmailIdentity: domain });
+        const response = await sesv2Client.send(command);
 
-        const status = response.VerificationAttributes?.[domain]?.VerificationStatus || "NotFound";
+        // Fetch our domain record to check the custom TXT token
+        const dbDomain = await db.query.domainVerifications.findFirst({
+            where: eq(domainVerifications.domain, domain)
+        });
 
-        return { success: true, status };
+        if (!dbDomain) {
+            return { success: false, error: "Domain not found in our database." };
+        }
+
+        let isTxtVerified = false;
+        if (dbDomain.verificationToken) {
+            try {
+                // Check DNS TXT records for the domain
+                const txtRecords = await require('dns').promises.resolveTxt(`_ratehonk-verify.${domain}`);
+                // txtRecords is an array of arrays of strings
+                const flatRecords = txtRecords.map((arr: string[]) => arr.join(''));
+                if (flatRecords.includes(dbDomain.verificationToken)) {
+                    isTxtVerified = true;
+                }
+            } catch (dnsError: any) {
+                // TXT record doesn't exist yet or other DNS error
+            }
+        } else {
+            // For backwards compatibility with domains created before this update
+            isTxtVerified = true;
+        }
+
+        // SESv2 indicates readiness via VerifiedForSendingStatus
+        const isSesVerified = response.VerifiedForSendingStatus === true;
+        const isVerified = isSesVerified && isTxtVerified;
+        
+        const status = isVerified ? "Success" : "Pending";
+
+        if (isVerified) {
+            await db.update(domainVerifications)
+                .set({ status: 'verified' })
+                .where(eq(domainVerifications.domain, domain));
+        }
+
+        return { success: true, status, dkimStatus: response.DkimAttributes?.Status, isTxtVerified, isSesVerified };
+    } catch (error: any) {
+        if (error.name === 'NotFoundException') {
+            return { success: true, status: "NotFound" };
+        }
+        return { success: false, error: error.message };
+    }
+};
+
+// 3. Connect Domain (Multitenant via SESv2)
+export const connectDomain = async ({ domain, userId, businessId }: { domain: string, userId: string, businessId: string }) => {
+    try {
+        const lowerDomain = domain.toLowerCase().trim();
+        
+        if (RESTRICTED_DOMAINS.includes(lowerDomain)) {
+            return {
+                success: false, 
+                error: "Public domains like Gmail, Yahoo, and Hotmail don't need to be verified or authenticated. Please use a custom domain."
+            };
+        }
+
+        // Prevent domain hijacking for active domains
+        const otherBusinessDomain = await db.query.domainVerifications.findFirst({
+            where: and(
+                eq(domainVerifications.domain, lowerDomain),
+                ne(domainVerifications.businessId, businessId)
+            )
+        });
+
+        if (otherBusinessDomain) {
+            return {
+                success: false,
+                error: "This domain is already registered to another business. Please contact support if you own this domain."
+            };
+        }
+
+        const provider = await identifyDnsProvider(lowerDomain);
+        const configSetName = `${businessId}-config`;
+        
+        // Generate records via SESv2
+        const setupResponse = await setupTenantDomain(lowerDomain, configSetName);
+
+        let verificationToken = `ratehonk-verify=${crypto.randomUUID()}`;
+
+        // Insert into domain_verifications if not exists (so it shows in the list)
+        const existingDomain = await db.query.domainVerifications.findFirst({
+            where: and(eq(domainVerifications.domain, lowerDomain), eq(domainVerifications.userId, userId))
+        });
+        
+        if (!existingDomain) {
+            await db.insert(domainVerifications).values({
+                userId,
+                businessId, // Save the business ID
+                domain: lowerDomain,
+                verificationToken,
+                status: 'pending' // pending until background checks pass
+            });
+        } else {
+            if (!existingDomain.verificationToken) {
+                await db.update(domainVerifications).set({ verificationToken }).where(eq(domainVerifications.id, existingDomain.id));
+            } else {
+                verificationToken = existingDomain.verificationToken;
+            }
+        }
+
+        return {
+            success: true,
+            message: "DNS records generated.",
+            records: setupResponse.dnsRecords,
+            verificationToken,
+            provider,
+        };
     } catch (error: any) {
         return { success: false, error: error.message };
     }

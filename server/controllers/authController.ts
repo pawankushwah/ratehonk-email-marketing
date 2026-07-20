@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { db } from '../db';
-import { users, businesses, verificationTokens, rolesEnum, refreshTokens } from '../db/schema';
+import { users, businesses, verificationTokens, rolesEnum, refreshTokens, domainVerifications } from '../db/schema';
 import { eq, and, gt } from 'drizzle-orm';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import bcrypt from 'bcryptjs';
@@ -9,6 +9,8 @@ import { emailQueue, redisConnection } from '../queue/emailQueue';
 import { getRegistrationTemplate } from '../utils/emailTemplates';
 import { UAParser } from 'ua-parser-js';
 import net from 'net';
+import { createTenantConfigSet } from '../services/tenant';
+import { checkDomainStatus } from './domainController';
 
 const RATE_LIMIT_WINDOW = 60 * 15; // 15 minutes
 const MAX_REQUESTS = 5;
@@ -204,6 +206,11 @@ export const verifyRegistration = async ({ input, ctx }: { input: any, ctx: any 
 
     user = newUser;
     defaultBusinessId = newBusiness.id;
+
+    // Call createTenantConfigSet to setup SES for the new business
+    await createTenantConfigSet(defaultBusinessId).catch(err => {
+      console.error("Failed to create tenant config set on registration", err);
+    });
   } else {
     const userBusinesses = await db.query.businesses.findMany({ where: eq(businesses.userId, user.id) });
     defaultBusinessId = userBusinesses.length > 0 ? userBusinesses[0].id : null;
@@ -359,6 +366,23 @@ export const login = async ({ input, ctx }: { input: any, ctx: any }) => {
   // Clear rate limits on successful login
   await redisConnection.del(`ratelimit:login_ip:${ip}`);
   await redisConnection.del(`ratelimit:login_email:${input.email}`);
+
+  // Async background task: Check and update domain verifications
+  (async () => {
+    try {
+      const pendingDomains = await db.query.domainVerifications.findMany({
+        where: and(eq(domainVerifications.userId, user.id), eq(domainVerifications.status, 'pending'))
+      });
+      for (const pd of pendingDomains) {
+        const result = await checkDomainStatus({ domain: pd.domain });
+        if (result.success && result.status === 'Success') {
+          await db.update(domainVerifications).set({ status: 'verified' }).where(eq(domainVerifications.id, pd.id));
+        }
+      }
+    } catch (e) {
+      console.error("Background domain check failed", e);
+    }
+  })();
 
   return {
     success: true,

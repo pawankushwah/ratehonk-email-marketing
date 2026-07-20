@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, Suspense } from 'react';
 import { trpc } from '@/app/trpc';
-import { User, Building2, Plus, Edit2, ArrowLeft, Mail, Phone, X, Globe, Copy, CheckCircle2, MoreVertical, Trash2, Settings } from 'lucide-react';
+import { User, Building2, Plus, Edit2, ArrowLeft, Mail, Phone, X, Globe, Copy, CheckCircle2, MoreVertical, Trash2, Settings, AlertCircle } from 'lucide-react';
 import { useToast } from '@/app/hooks/useToast';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -45,10 +45,12 @@ function DomainsTab() {
 
   // New states for Modal and Actions
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalStep, setModalStep] = useState<'send' | 'verify' | 'start_auth' | 'results'>('send');
+  const [modalStep, setModalStep] = useState<'send' | 'verify' | 'start_auth' | 'results' | 'delete_confirm'>('send');
+  const [domainToDelete, setDomainToDelete] = useState<{ id: string, domain: string } | null>(null);
   const [tokenInput, setTokenInput] = useState('');
   const [authDomainInput, setAuthDomainInput] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
 
   const [domainStatuses, setDomainStatuses] = useState<Record<string, string>>({});
   const [isCheckingStatus, setIsCheckingStatus] = useState<Record<string, boolean>>({});
@@ -58,11 +60,16 @@ function DomainsTab() {
   const { data: userDomainsData, refetch: refetchDomains } = trpc.getUserDomains.useQuery();
   const domains = ((userDomainsData && 'domains' in userDomainsData ? userDomainsData.domains : []) || []) as any[];
 
+  const { data: businessesData } = trpc.user.getBusinesses.useQuery();
+  const businesses = (businessesData?.businesses || []) as any[];
+
   const deleteDomainMutation = trpc.deleteDomain.useMutation({
     onSuccess: (data) => {
       if (data.success) {
         refetchDomains();
         setActiveMenuId(null);
+        setIsModalOpen(false);
+        setDomainToDelete(null);
       } else {
         setErrorMsg(('error' in data ? data.error : undefined) || "Failed to delete domain");
       }
@@ -98,7 +105,7 @@ function DomainsTab() {
     }
   });
 
-  const verifyDomainMutation = trpc.domainVerification.useMutation({
+  const connectDomainMutation = trpc.connectDomain.useMutation({
     onSuccess: (data) => {
       if (!data.success) {
         setErrorMsg(('error' in data ? data.error : undefined) || "Failed to authenticate domain.");
@@ -134,7 +141,7 @@ function DomainsTab() {
     setIsModalOpen(true);
     setModalStep('results');
     setActiveMenuId(null); // Close the menu if open
-    verifyDomainMutation.mutate({ domain: domainName });
+    connectDomainMutation.mutate({ domain: domainName });
   };
 
   const handleCheckStatus = async (domainName: string) => {
@@ -143,6 +150,9 @@ function DomainsTab() {
       const result = await utils.domainStatus.fetch({ domain: domainName });
       if (result.success && 'status' in result) {
         setDomainStatuses(prev => ({ ...prev, [domainName]: result.status as string }));
+        if (result.status === 'Success') {
+          refetchDomains();
+        }
       }
     } catch (error) {
       console.error(error);
@@ -167,7 +177,7 @@ function DomainsTab() {
     }
     setErrorMsg('');
     setModalStep('results');
-    verifyDomainMutation.mutate({ domain: authDomainInput });
+    connectDomainMutation.mutate({ domain: authDomainInput, businessId: selectedBusinessId || undefined });
   };
 
   const copyToClipboard = (text: string, index: string) => {
@@ -185,123 +195,115 @@ function DomainsTab() {
           Your email domains control how your emails are sent through Ratehonk. Customers who authenticated their domain saw an average 51% decrease in email delivery bounce rate.
         </p>
 
-        <div className="mb-6 flex gap-3">
-          <Button type="button" size="sm" onClick={() => {
-            setIsModalOpen(true);
-            setModalStep('send');
-            setEmail('');
-            setTokenInput('');
-            setErrorMsg('');
-          }}>
-            Add and Verify Domain
-          </Button>
-          <Button type="button" size="sm" className="!bg-white !text-main !border !border-main hover:!bg-main/5" onClick={() => {
-            setIsModalOpen(true);
-            setModalStep('start_auth');
-            setAuthDomainInput('');
-            setErrorMsg('');
-          }}>
-            Start Authentication
-          </Button>
-        </div>
+        <div className="mb-8 flex flex-col gap-8">
+          {businesses.map((business: any) => {
+            const businessDomains = domains.filter(d => d.businessId === business.id);
 
-        {/* List of User Domains */}
-        {domains.length > 0 && (
-          <div className="mb-6 space-y-4">
-            {domains.map((d: any) => (
-              <div key={d.id} className="p-4 bg-white border border-gray-200 rounded-xl flex items-center justify-between shadow-sm">
-                <div>
-                  <div className="font-bold text-text">{d.domain}</div>
-                  <div className="text-sm text-text-dim">{d.email}</div>
-                </div>
-                  <div className="flex items-center gap-3">
-                  {d.status === 'pending' ? (
-                    <span className="px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded-full border border-yellow-200">Pending Email Verification</span>
-                  ) : (
-                    <>
-                      {domainStatuses[d.domain] ? (
-                        <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${domainStatuses[d.domain] === 'Success' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
-                          DKIM: {domainStatuses[d.domain]}
-                        </span>
-                      ) : null}
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleCheckStatus(d.domain)}
-                        disabled={isCheckingStatus[d.domain]}
-                        className="text-xs !py-1 !px-2 h-7"
-                      >
-                        {isCheckingStatus[d.domain] ? "Checking..." : "Check Status"}
-                      </Button>
-                    </>
-                  )}
-
-                  <div className="relative">
-                    <button type="button" onClick={() => setActiveMenuId(activeMenuId === d.id ? null : d.id)} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-md transition-colors">
-                      <MoreVertical className="w-5 h-5" />
-                    </button>
-                    {activeMenuId === d.id && (
-                      <>
-                        <div className="fixed inset-0 z-10" onClick={() => setActiveMenuId(null)} />
-                        <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 shadow-lg rounded-lg z-20 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                          {d.status === 'pending' && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveMenuId(null);
-                                setIsModalOpen(true);
-                                setModalStep('verify');
-                                setEmail(d.email);
-                                setTokenInput('');
-                                setErrorMsg('');
-                              }}
-                              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                            >
-                              <CheckCircle2 className="w-4 h-4" /> Verify Token
-                            </button>
-                          )}
-                          {d.status === 'verified' && (
-                            <button
-                              type="button"
-                              onClick={() => handleAuthenticate(d.domain)}
-                              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                            >
-                              <CheckCircle2 className="w-4 h-4" /> Show DNS Records
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm('Are you sure you want to delete this domain?')) {
-                                deleteDomainMutation.mutate({ id: d.id });
-                              }
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                          >
-                            <Trash2 className="w-4 h-4" /> Delete Domain
-                          </button>
-                        </div>
-                      </>
-                    )}
+            return (
+              <div key={business.id} className="bg-white border border-gray-200 rounded-xl shadow-sm">
+                <div className="bg-gray-50 border-b border-gray-200 p-4 flex items-center justify-between rounded-t-xl">
+                  <div>
+                    <h4 className="font-bold text-lg text-text flex items-center gap-2">
+                      <Building2 className="w-5 h-5 text-main" />
+                      {business.name}
+                    </h4>
+                    <p className="text-xs text-text-dim mt-1">Manage sending domains for this business workspace.</p>
                   </div>
+                  <Button type="button" size="sm" className="!bg-white !text-main !border !border-main hover:!bg-main/5 flex items-center gap-2" onClick={() => {
+                    setSelectedBusinessId(business.id);
+                    setIsModalOpen(true);
+                    setModalStep('start_auth');
+                    setAuthDomainInput('');
+                    setErrorMsg('');
+                  }}>
+                    <Plus className="w-4 h-4" /> Add Domain
+                  </Button>
+                </div>
+
+                <div className="p-4 flex flex-col gap-4">
+                  {businessDomains.length === 0 ? (
+                    <div className="text-center py-6 bg-gray-50/50 rounded-lg border border-dashed border-gray-200 text-gray-500 text-sm">
+                      No domains configured for this business yet.
+                    </div>
+                  ) : (
+                    businessDomains.map((d: any) => (
+                      <div key={d.id} className="p-4 bg-white border border-gray-200 rounded-xl flex items-center justify-between shadow-sm hover:border-blue-200 transition-colors">
+                        <div>
+                          <div className="font-bold text-text flex items-center gap-2">
+                            <Globe className="w-4 h-4 text-gray-400" /> {d.domain}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {d.status === 'pending' ? (
+                            <>
+                              <span className="px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded-full border border-yellow-200">
+                                Pending
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCheckStatus(d.domain)}
+                                disabled={isCheckingStatus[d.domain]}
+                                className="text-xs !py-1 !px-2 h-7"
+                              >
+                                {isCheckingStatus[d.domain] ? "Refreshing..." : "Refresh"}
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full border border-green-200">
+                              Verified
+                            </span>
+                          )}
+
+                          <div className="relative">
+                            <button type="button" onClick={() => setActiveMenuId(activeMenuId === d.id ? null : d.id)} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-md transition-colors">
+                              <MoreVertical className="w-5 h-5" />
+                            </button>
+                            {activeMenuId === d.id && (
+                              <>
+                                <div className="fixed inset-0 z-40" onClick={() => setActiveMenuId(null)} />
+                                <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 shadow-lg rounded-lg z-50 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAuthenticate(d.domain)}
+                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4" /> Show DNS Records
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDomainToDelete({ id: d.id, domain: d.domain });
+                                      setModalStep('delete_confirm');
+                                      setIsModalOpen(true);
+                                      setActiveMenuId(null);
+                                      setErrorMsg('');
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                  >
+                                    <Trash2 className="w-4 h-4" /> Delete Domain
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
 
-
-
-
-        <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-100">
-          <p className="text-sm text-text-dim">
-            Public domains like Gmail, Yahoo, and Hotmail don't need to be verified or authenticated.
-          </p>
-          <div className="mt-4 flex items-center justify-between bg-white border border-gray-200 p-3 rounded-md">
-            <span className="text-sm font-medium text-text">gmail.com</span>
-            <span className="text-xs font-semibold px-2 py-1 bg-gray-100 text-gray-500 rounded">Not Allowed for Sending</span>
-          </div>
+          {businesses.length === 0 && (
+            <div className="text-center py-10 bg-white rounded-xl border border-dashed border-gray-300">
+              <Building2 className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <h4 className="text-gray-900 font-bold mb-1">No businesses found</h4>
+              <p className="text-sm text-gray-500 max-w-sm mx-auto">Create a business profile first to manage sending domains.</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -314,10 +316,12 @@ function DomainsTab() {
       </div>
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+          <div className={`bg-white rounded-xl shadow-xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] ${modalStep === 'results' ? 'max-w-4xl' : 'max-w-md'}`}>
             <div className="flex justify-between items-center p-6 border-b border-gray-100">
               <h3 className="text-lg font-bold text-text">
-                {modalStep === 'send' ? 'Add Domain' : 'Verify Domain'}
+                {modalStep === 'send' || modalStep === 'start_auth' ? 'Add Domain' :
+                  modalStep === 'delete_confirm' ? 'Delete Domain' :
+                    'Verify Domain'}
               </h3>
               <button type="button" onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
@@ -388,13 +392,13 @@ function DomainsTab() {
                       placeholder="e.g. yourdomain.com"
                       value={authDomainInput}
                       onChange={(e) => setAuthDomainInput(e.target.value)}
-                      disabled={verifyDomainMutation.isPending}
+                      disabled={connectDomainMutation.isPending}
                     />
                   </div>
                   <div className="flex justify-end gap-3">
                     <Button type="button" size="sm" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                    <Button type="button" size="sm" onClick={handleStartAuthentication} disabled={!authDomainInput || verifyDomainMutation.isPending}>
-                      {verifyDomainMutation.isPending ? "Generating..." : "Generate Records"}
+                    <Button type="button" size="sm" onClick={handleStartAuthentication} disabled={!authDomainInput || connectDomainMutation.isPending}>
+                      {connectDomainMutation.isPending ? "Generating..." : "Generate Records"}
                     </Button>
                   </div>
                 </>
@@ -402,18 +406,13 @@ function DomainsTab() {
 
               {modalStep === 'results' && (
                 <>
-                  {verifyDomainMutation.isPending ? (
+                  {connectDomainMutation.isPending ? (
                     <div className="flex flex-col items-center justify-center py-10">
                       <div className="w-10 h-10 border-4 border-main border-t-transparent rounded-full animate-spin mb-4"></div>
                       <p className="text-text-dim">Generating DKIM records...</p>
                     </div>
                   ) : verificationResult && verificationResult.success ? (
                     <div>
-                      <div className="flex items-center gap-3 mb-4">
-                        <CheckCircle2 className="text-green-500 w-6 h-6" />
-                        <h4 className="font-bold text-lg">Domain verified successfully</h4>
-                      </div>
-
                       {verificationResult.provider && verificationResult.provider !== 'Other' && verificationResult.provider !== 'Unknown' && (
                         <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg text-blue-800 text-sm">
                           We detected your domain is hosted on <strong>{verificationResult.provider}</strong>. Please log into your {verificationResult.provider} account and add the following CNAME records to your DNS settings.
@@ -425,93 +424,272 @@ function DomainsTab() {
                         </div>
                       )}
 
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="font-bold text-sm text-text">DNS Records to Add</h4>
-                        <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
-                          {verificationResult.records?.filter((_: any, i: number) => copiedItems.has(`${i}-name`) && copiedItems.has(`${i}-value`)).length || 0} / {verificationResult.records?.length || 0} records copied
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h4 className="font-bold text-lg text-text">DNS Records to Add</h4>
+                          <p className="text-sm text-gray-500 mt-1 max-w-xl">
+                            Add these records to your domain provider's DNS settings. It can take up to 48 hours for DNS changes to propagate and the domain status to update to verified.
+                          </p>
+                        </div>
+                        <span className="text-xs font-semibold bg-main/10 text-main px-3 py-1.5 rounded-full whitespace-nowrap mt-1">
+                          {
+                            (verificationResult.records?.filter((_: any, i: number) => copiedItems.has(`${i}-name`) && copiedItems.has(`${i}-value`)).length || 0) +
+                            (verificationResult.verificationToken && copiedItems.has(`txt-name`) && copiedItems.has(`txt-value`) ? 1 : 0)
+                          } / {
+                            (verificationResult.records?.length || 0) + (verificationResult.verificationToken ? 1 : 0)
+                          } records copied
                         </span>
                       </div>
 
-                      <div className="overflow-x-auto border border-gray-200 rounded-lg max-h-[40vh] custom-scrollbar">
-                        <table className="w-full text-left border-collapse min-w-[500px]">
-                          <thead>
-                            <tr className="bg-gray-50 border-b border-gray-200 text-xs text-text-dim font-bold uppercase">
-                              <th className="p-3">Record Type</th>
-                              <th className="p-3">Host Name</th>
-                              <th className="p-3">Required Value</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {verificationResult.records?.map((record: any, index: number) => {
-                              const isNameCopied = copiedIndex === `${index}-name`;
-                              const isValueCopied = copiedIndex === `${index}-value`;
-
-                              const hasNameBeenCopiedEver = copiedItems.has(`${index}-name`);
-                              const hasValueBeenCopiedEver = copiedItems.has(`${index}-value`);
-
-                              return (
-                                <tr key={index} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50">
-                                  <td className="p-3 text-sm font-semibold text-text align-top">
-                                    {record.type}
-                                  </td>
-                                  <td className="p-3 align-top">
-                                    <div className={`flex items-center justify-between font-mono text-xs break-all p-1.5 border rounded gap-2 ${hasNameBeenCopiedEver ? 'bg-red-50 border-red-200 text-red-800' : 'bg-teal-50/30 border-teal-200 text-teal-800'}`}>
-                                      <span className="pl-1 truncate" title={record.name}>{record.name}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => copyToClipboard(record.name, `${index}-name`)}
-                                        className={`shrink-0 px-2 py-1 text-[10px] font-bold rounded transition-colors ${isNameCopied ? 'bg-red-400 text-white' : 'bg-teal-600 hover:bg-teal-700 text-white'}`}
-                                      >
-                                        {isNameCopied ? "Copied!" : "Copy"}
-                                      </button>
-                                    </div>
-                                  </td>
-                                  <td className="p-3 align-top">
-                                    <div className={`flex items-center justify-between font-mono text-xs break-all p-1.5 border rounded gap-2 ${hasValueBeenCopiedEver ? 'bg-red-50 border-red-200 text-red-800' : 'bg-teal-50/30 border-teal-200 text-teal-800'}`}>
-                                      <span className="pl-1 line-clamp-2" title={record.value}>{record.value}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => copyToClipboard(record.value, `${index}-value`)}
-                                        className={`shrink-0 px-2 py-1 text-[10px] font-bold rounded transition-colors ${isValueCopied ? 'bg-red-400 text-white' : 'bg-teal-600 hover:bg-teal-700 text-white'}`}
-                                      >
-                                        {isValueCopied ? "Copied!" : "Copy"}
-                                      </button>
-                                    </div>
-                                  </td>
+                      <div className="flex flex-col gap-8">
+                        {/* Domain Verification (DKIM) */}
+                        <div>
+                          <div className="mb-2">
+                            <h5 className="font-bold text-text">1. Domain Verification (DKIM)</h5>
+                            <p className="text-sm text-text-dim">Add these CNAME records to authenticate your domain and improve deliverability.</p>
+                          </div>
+                          <div className="overflow-x-auto border border-gray-200 rounded-lg custom-scrollbar shadow-sm">
+                            <table className="w-full text-left border-collapse min-w-[500px]">
+                              <thead>
+                                <tr className="bg-gray-50 border-b border-gray-200 text-xs text-text-dim font-bold uppercase tracking-wider">
+                                  <th className="p-3 w-32">Type</th>
+                                  <th className="p-3">Host Name</th>
+                                  <th className="p-3">Required Value</th>
                                 </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                              </thead>
+                              <tbody>
+                                {(verificationResult.records || [])
+                                  .map((r: any, i: number) => ({ ...r, originalIndex: i }))
+                                  .filter((r: any) => r.type === 'CNAME')
+                                  .map((record: any) => {
+                                    const index = record.originalIndex;
+                                    const isNameCopied = copiedIndex === `${index}-name`;
+                                    const isValueCopied = copiedIndex === `${index}-value`;
+                                    const hasNameBeenCopiedEver = copiedItems.has(`${index}-name`);
+                                    const hasValueBeenCopiedEver = copiedItems.has(`${index}-value`);
 
-                      {/* Provider API Scaffolding (OAuth) */}
-                      <div className="mt-8 border-t border-gray-200 pt-6">
-                        <h5 className="font-bold text-text mb-2 text-sm">Auto-Configure DNS</h5>
-                        <p className="text-xs text-text-dim mb-4">
-                          Alternatively, connect directly to your provider to authenticate automatically.
-                        </p>
-                        <div className="flex flex-col gap-3">
-                          <Button type="button" size="sm" className="!bg-white !text-blue-600 !border !border-blue-600 hover:!bg-blue-50 w-full" onClick={() => alert('Connect Cloudflare OAuth flow goes here.')}>
-                            Connect Cloudflare
-                          </Button>
-                          <Button type="button" size="sm" className="!bg-white !text-green-600 !border !border-green-600 hover:!bg-green-50 w-full" onClick={() => alert('Connect GoDaddy OAuth flow goes here.')}>
-                            Connect GoDaddy
+                                    return (
+                                      <tr key={index} className="border-b border-gray-100 last:border-b-0 hover:bg-blue-50/30 transition-colors">
+                                        <td className="p-3 text-sm font-bold text-gray-700 align-center">
+                                          {record.type}
+                                        </td>
+                                        <td className="p-3 align-top">
+                                          <div className={`flex items-center justify-between font-mono text-xs break-all p-2 border rounded-md gap-3 ${hasNameBeenCopiedEver ? 'bg-green-50/50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                                            <span className="truncate" title={record.name}>{record.name}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => copyToClipboard(record.name, `${index}-name`)}
+                                              className={`shrink-0 px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${isNameCopied ? 'bg-green-500 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                                            >
+                                              {isNameCopied ? "Copied!" : "Copy"}
+                                            </button>
+                                          </div>
+                                        </td>
+                                        <td className="p-3 align-top">
+                                          <div className={`flex items-center justify-between font-mono text-xs break-all p-2 border rounded-md gap-3 ${hasValueBeenCopiedEver ? 'bg-green-50/50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                                            <span className="line-clamp-2" title={record.value}>{record.value}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => copyToClipboard(record.value, `${index}-value`)}
+                                              className={`shrink-0 px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${isValueCopied ? 'bg-green-500 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                                            >
+                                              {isValueCopied ? "Copied!" : "Copy"}
+                                            </button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Mail Routing & DMARC (MX, TXT) */}
+                        <div>
+                          <div className="mb-2">
+                            <h5 className="font-bold text-text">2. Mail Routing & DMARC (MX, TXT)</h5>
+                            <p className="text-sm text-text-dim">These records ensure your emails align with strict DMARC policies for maximum inbox placement.</p>
+                          </div>
+                          <div className="overflow-x-auto border border-gray-200 rounded-lg custom-scrollbar shadow-sm">
+                            <table className="w-full text-left border-collapse min-w-[500px]">
+                              <thead>
+                                <tr className="bg-gray-50 border-b border-gray-200 text-xs text-text-dim font-bold uppercase tracking-wider">
+                                  <th className="p-3 w-32">Type</th>
+                                  <th className="p-3">Host Name</th>
+                                  <th className="p-3">Required Value</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(verificationResult.records || [])
+                                  .map((r: any, i: number) => ({ ...r, originalIndex: i }))
+                                  .filter((r: any) => r.type !== 'CNAME')
+                                  .map((record: any) => {
+                                    const index = record.originalIndex;
+                                    const isNameCopied = copiedIndex === `${index}-name`;
+                                    const isValueCopied = copiedIndex === `${index}-value`;
+                                    const hasNameBeenCopiedEver = copiedItems.has(`${index}-name`);
+                                    const hasValueBeenCopiedEver = copiedItems.has(`${index}-value`);
+
+                                    return (
+                                      <tr key={index} className="border-b border-gray-100 last:border-b-0 hover:bg-blue-50/30 transition-colors">
+                                        <td className="p-3 text-sm font-bold text-gray-700 align-center">
+                                          {record.type}
+                                        </td>
+                                        <td className="p-3 align-top">
+                                          <div className={`flex items-center justify-between font-mono text-xs break-all p-2 border rounded-md gap-3 ${hasNameBeenCopiedEver ? 'bg-green-50/50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                                            <span className="truncate" title={record.name}>{record.name}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => copyToClipboard(record.name, `${index}-name`)}
+                                              className={`shrink-0 px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${isNameCopied ? 'bg-green-500 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                                            >
+                                              {isNameCopied ? "Copied!" : "Copy"}
+                                            </button>
+                                          </div>
+                                        </td>
+                                        <td className="p-3 align-top">
+                                          <div className={`flex items-center justify-between font-mono text-xs break-all p-2 border rounded-md gap-3 ${hasValueBeenCopiedEver ? 'bg-green-50/50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                                            <span className="line-clamp-2" title={record.value}>{record.value}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => copyToClipboard(record.value, `${index}-value`)}
+                                              className={`shrink-0 px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${isValueCopied ? 'bg-green-500 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                                            >
+                                              {isValueCopied ? "Copied!" : "Copy"}
+                                            </button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {verificationResult.verificationToken && (
+                          <div className="mt-8">
+                            <div className="mb-2">
+                              <h5 className="font-bold text-text">2. Domain Ownership Verification (TXT)</h5>
+                              <p className="text-sm text-text-dim">Add this TXT record to prove domain ownership.</p>
+                            </div>
+                            <div className="overflow-x-auto border border-gray-200 rounded-lg custom-scrollbar shadow-sm">
+                              <table className="w-full text-left border-collapse min-w-[500px]">
+                                <thead>
+                                  <tr className="bg-gray-50 border-b border-gray-200 text-xs text-text-dim font-bold uppercase tracking-wider">
+                                    <th className="p-3 w-32">Type</th>
+                                    <th className="p-3">Host Name</th>
+                                    <th className="p-3">Required Value</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(() => {
+                                    const record = { type: 'TXT', name: `_ratehonk-verify`, value: verificationResult.verificationToken };
+                                    const index = 'txt';
+                                    const isNameCopied = copiedIndex === `${index}-name`;
+                                    const isValueCopied = copiedIndex === `${index}-value`;
+                                    const hasNameBeenCopiedEver = copiedItems.has(`${index}-name`);
+                                    const hasValueBeenCopiedEver = copiedItems.has(`${index}-value`);
+
+                                    return (
+                                      <tr key={index} className="border-b border-gray-100 last:border-b-0 hover:bg-blue-50/30 transition-colors">
+                                        <td className="p-3 text-sm font-bold text-gray-700 align-center">
+                                          {record.type}
+                                        </td>
+                                        <td className="p-3 align-top">
+                                          <div className={`flex items-center justify-between font-mono text-xs break-all p-2 border rounded-md gap-3 ${hasNameBeenCopiedEver ? 'bg-green-50/50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                                            <span className="truncate" title={record.name}>{record.name}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => copyToClipboard(record.name, `${index}-name`)}
+                                              className={`shrink-0 px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${isNameCopied ? 'bg-green-500 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                                            >
+                                              {isNameCopied ? "Copied!" : "Copy"}
+                                            </button>
+                                          </div>
+                                        </td>
+                                        <td className="p-3 align-top">
+                                          <div className={`flex items-center justify-between font-mono text-xs break-all p-2 border rounded-md gap-3 ${hasValueBeenCopiedEver ? 'bg-green-50/50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                                            <span className="line-clamp-2" title={record.value}>{record.value}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => copyToClipboard(record.value, `${index}-value`)}
+                                              className={`shrink-0 px-2.5 py-1 text-[11px] font-bold rounded transition-colors ${isValueCopied ? 'bg-green-500 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                                            >
+                                              {isValueCopied ? "Copied!" : "Copy"}
+                                            </button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })()}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Provider API Scaffolding (OAuth) */}
+                        <div className="mt-8 border-t border-gray-200 pt-6">
+                          <h5 className="font-bold text-text mb-2 text-sm">Auto-Configure DNS</h5>
+                          <p className="text-xs text-text-dim mb-4">
+                            Alternatively, connect directly to your provider to authenticate automatically.
+                          </p>
+                          <div className="flex flex-col gap-3">
+                            <Button type="button" size="sm" className="!bg-white !text-blue-600 !border !border-blue-600 hover:!bg-blue-50 w-full" onClick={() => alert('Connect Cloudflare OAuth flow goes here.')}>
+                              Connect Cloudflare
+                            </Button>
+                            <Button type="button" size="sm" className="!bg-white !text-green-600 !border !border-green-600 hover:!bg-green-50 w-full" onClick={() => alert('Connect GoDaddy OAuth flow goes here.')}>
+                              Connect GoDaddy
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="mt-6 pt-4 border-t border-gray-200 flex justify-end">
+                          <Button type="button" size="sm" onClick={() => {
+                            setVerificationResult(null);
+                            setIsModalOpen(false);
+                          }} className="!py-2 !px-4 !bg-white !text-text !border !border-gray-200 hover:!bg-gray-50">
+                            Done
                           </Button>
                         </div>
-                      </div>
-
-                      <div className="mt-6 pt-4 border-t border-gray-200 flex justify-end">
-                        <Button type="button" size="sm" onClick={() => {
-                          setVerificationResult(null);
-                          setIsModalOpen(false);
-                        }} className="!py-2 !px-4 !bg-white !text-text !border !border-gray-200 hover:!bg-gray-50">
-                          Done
-                        </Button>
                       </div>
                     </div>
                   ) : null}
                 </>
+              )}
+
+              {modalStep === 'delete_confirm' && domainToDelete && (
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <p className="text-sm text-text-dim mt-2">
+                      Are you sure you want to delete <strong>{domainToDelete.domain}</strong>? This action will remove all DNS verification records and cannot be undone.
+                    </p>
+                  </div>
+
+                  {errorMsg && (
+                    <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-3 mt-4 pt-4 border-t border-gray-100">
+                    <Button type="button" size="sm" variant="outline" onClick={() => {
+                      setIsModalOpen(false);
+                      setDomainToDelete(null);
+                      setErrorMsg('');
+                    }}>
+                      Cancel
+                    </Button>
+                    <Button type="button" size='sm' variant="danger" className="flex items-center gap-2" disabled={deleteDomainMutation.isLoading} onClick={() => {
+                      deleteDomainMutation.mutate({ id: domainToDelete.id });
+                    }}>
+                      {deleteDomainMutation.isLoading ? "Deleting..." : "Delete Domain"}
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           </div>

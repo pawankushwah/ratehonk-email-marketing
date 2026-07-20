@@ -122,9 +122,9 @@ export const contactRequests = pgTable('contact_requests', {
 export const domainVerifications = pgTable('domain_verifications', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').references(() => users.id).notNull(),
-  email: text('email').notNull(),
+  businessId: uuid('business_id').references(() => businesses.id), // Added to link domain to a business (tenant)
   domain: text('domain').notNull(),
-  token: text('token').notNull(),
+  verificationToken: text('verification_token'), // Added to prevent domain hijacking
   status: text('status').notNull().default('pending'), // 'pending' | 'verified'
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });

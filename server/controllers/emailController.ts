@@ -1,26 +1,11 @@
-// controllers/emailController.js
-import { SendEmailCommand } from "@aws-sdk/client-ses";
-import { sesClient } from "../utils/sesClient";
-import type { Request, Response } from "express";
+import { sendCampaignEmail as sendSESCampaignEmail } from "../services/awsEmailSend";
 
-export const sendCampaignEmail = async ({ fromEmail, toEmail, subject, htmlBody }: { fromEmail: string, toEmail: string, subject: string, htmlBody: string }) => {
-    // fromEmail must use the verified domain, e.g., hello@example.com
-
-    const command = new SendEmailCommand({
-        Destination: { ToAddresses: [toEmail] },
-        Message: {
-            Subject: { Data: subject, Charset: "UTF-8" },
-            Body: {
-                Html: { Data: htmlBody, Charset: "UTF-8" },
-            },
-        },
-        Source: fromEmail,
-    });
-
+export const sendCampaignEmail = async ({ tenantId, fromEmail, toEmail, subject, htmlBody }: { tenantId: string, fromEmail: string, toEmail: string, subject: string, htmlBody: string }) => {
     try {
-        const response = await sesClient.send(command);
+        const response = await sendSESCampaignEmail(tenantId, fromEmail, toEmail, subject, htmlBody);
         return { success: true, messageId: response.MessageId };
     } catch (error: any) {
+        console.error("Email send error:", error);
         return { success: false, error: error.message };
     }
 };

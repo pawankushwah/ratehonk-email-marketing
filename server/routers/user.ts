@@ -4,6 +4,7 @@ import { db } from '../db';
 import { users, businesses } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { createTenantConfigSet, deleteTenantResources } from '../services/tenant';
 
 export const userRouter = router({
   
@@ -63,6 +64,11 @@ export const userRouter = router({
         })
         .returning();
 
+      // Create SES Tenant and Configuration Set for the new business
+      await createTenantConfigSet(newBusiness.id).catch(err => {
+        console.error("Failed to create tenant config set on business creation", err);
+      });
+
       return { success: true, message: 'Business created successfully', businessId: newBusiness.id };
     }),
 
@@ -105,6 +111,33 @@ export const userRouter = router({
         .where(eq(businesses.id, input.id));
 
       return { success: true, message: 'Business updated successfully' };
+    }),
+
+  deleteBusiness: protectedProcedure
+    .meta({ openapi: { method: 'DELETE', path: '/user/businesses/{id}', tags: ['user'], summary: 'Delete business' } })
+    .input(z.object({
+      id: z.string()
+    }))
+    .output(z.object({ success: z.boolean(), message: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      // Ensure the business belongs to the user
+      const existing = await db.query.businesses.findFirst({
+        where: and(eq(businesses.id, input.id), eq(businesses.userId, ctx.user.userId))
+      });
+
+      if (!existing) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Business not found' });
+      }
+
+      // Delete the Tenant Resources in AWS SES
+      await deleteTenantResources(input.id).catch(err => {
+        console.error("Failed to delete tenant resources during business deletion", err);
+      });
+
+      // Delete the Business from DB
+      await db.delete(businesses).where(eq(businesses.id, input.id));
+
+      return { success: true, message: 'Business deleted successfully' };
     })
 });
 
