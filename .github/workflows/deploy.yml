@@ -81,6 +81,16 @@ jobs:
               echo "✅ Redis is already installed."
             fi
 
+            # ---- Ensure Node 22 is installed ----
+            if ! command -v node &> /dev/null || [ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 22 ]; then
+              echo "⚠️ Node 22 not found. Installing Node 22..."
+              curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            else
+              echo "✅ Node 22 is already installed."
+            fi
+
+            # ---- Production dependencies ----
             npm install --legacy-peer-deps --force
 
             npm run build
