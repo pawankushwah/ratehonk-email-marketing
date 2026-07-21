@@ -2,6 +2,7 @@ import { SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { simpleParser } from "mailparser";
 import { sesv2Client } from "../utils/sesClient";
+import { s3Client } from "../utils/s3Client";
 
 export const sendCampaignEmail = async (tenantId: string, senderEmail: string, recipientEmail: string, subject: string, htmlBody: string) => {
     // Generate the 1-click unsubscribe webhook URL
@@ -27,14 +28,17 @@ export const sendCampaignEmail = async (tenantId: string, senderEmail: string, r
     return await sesv2Client.send(new SendEmailCommand(params));
 };
 
-export const parseInboundEmailFromS3 = async (messageId) => {
+export const parseInboundEmailFromS3 = async (messageId: string) => {
     const command = new GetObjectCommand({
         Bucket: process.env.INBOUND_EMAIL_BUCKET,
         Key: messageId // SES saves the file using the Message ID as the filename
     });
 
     const s3Response = await s3Client.send(command);
-    const parsedEmail = await simpleParser(s3Response.Body);
+    if (!s3Response.Body) {
+        throw new Error('S3 object body is empty');
+    }
+    const parsedEmail = await simpleParser(s3Response.Body! as any);
 
     return parsedEmail;
 };

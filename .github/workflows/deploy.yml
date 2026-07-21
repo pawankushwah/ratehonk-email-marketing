@@ -14,8 +14,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🟢 Setup Node.js Environment
-        uses: actions/checkout@v4
-        # (Optional: Add test stages here if you want to run linting/testing before deploying)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+        env:
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
       - name: 📂 Sync Files via Rsync over SSH
         uses: easingthemes/ssh-deploy@v5.1.0
@@ -37,8 +40,8 @@ jobs:
           REMOTE_HOST: ${{ secrets.SERVER_IP }}
           REMOTE_USER: ${{ secrets.SERVER_USER }}
           REMOTE_PORT: "22"
-          SOURCE: "./uploads/"
-          TARGET: "/home/${{ secrets.SERVER_USER }}/htdocs/emailmarketing.ratehonk.com/uploads/"
+          SOURCE: "./public/uploads/"
+          TARGET: "/home/${{ secrets.SERVER_USER }}/htdocs/emailmarketing.ratehonk.com/public/uploads/"
 
       - name: 🔄 Install Dependencies & Restart App
         uses: appleboy/ssh-action@v1.0.3
@@ -71,13 +74,16 @@ jobs:
             fi
 
             npm install --legacy-peer-deps --force
-            npx tsc --noEmit
+
             npm run build
+            # Compile server TypeScript to dist
+            npx tsc --project tsconfig.server.json
             rm -rf ./app
-            npm prune --production
+            npm ci --only=production
             
             # Ensure PM2 starts in production mode to serve static files correctly
             export NODE_ENV=production
             pm2 restart index --update-env || pm2 start dist/index.js --name "index"
+            pm2 start npm --name "next" -- start
             pm2 save
 
