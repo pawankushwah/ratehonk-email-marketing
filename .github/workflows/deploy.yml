@@ -81,11 +81,20 @@ jobs:
               echo "✅ Redis is already installed."
             fi
 
-            # ---- Ensure Node 22 is installed ----
+            # ---- Ensure Node 22 is installed (nvm – no sudo) ----
             if ! command -v node &> /dev/null || [ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 22 ]; then
-              echo "⚠️ Node 22 not found. Installing Node 22..."
-              curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-              sudo apt-get install -y nodejs
+              echo "⚠️ Node 22 not found. Installing via nvm..."
+              # Install nvm if it isn’t already present
+              if [ ! -d "$HOME/.nvm" ]; then
+                curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+              fi
+              # Load nvm into the shell session
+              export NVM_DIR="$HOME/.nvm"
+              # shellcheck disable=SC1090
+              [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+              # Install and use Node 22
+              nvm install 22
+              nvm use 22
             else
               echo "✅ Node 22 is already installed."
             fi
