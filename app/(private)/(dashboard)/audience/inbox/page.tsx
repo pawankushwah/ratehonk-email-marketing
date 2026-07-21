@@ -7,9 +7,11 @@ import { useToast } from '@/app/hooks/useToast';
 import {
   Mail, Search, Trash2, Archive, CheckCircle2, User, Tag, ChevronLeft,
   Send, MessageSquare, Plus, X, ChevronDown, Check, CornerDownLeft,
-  FileText, Settings, HelpCircle, Inbox as InboxIcon, RefreshCw, Eye
+  FileText, Settings, HelpCircle, Inbox as InboxIcon, RefreshCw, Eye,
+  ArrowLeft
 } from 'lucide-react';
 import Button from '@/app/components/ui/button';
+import Link from 'next/link';
 
 // --- Type Definitions ---
 interface Contact {
@@ -139,6 +141,14 @@ export default function AudienceInboxPage() {
   );
   const dbContacts = ((contactsData && 'contacts' in contactsData ? contactsData.contacts : []) || []) as any[];
 
+  // Load email templates
+  const { data: templatesData } = trpc.emailtemp.getTemplates.useQuery(
+    { businessId: activeBusinessId || '' },
+    { enabled: !!activeBusinessId }
+  );
+  const dbTemplates = ((templatesData && 'templates' in templatesData ? templatesData.templates : []) || []) as any[];
+
+
   // --- State Variables ---
   const [threads, setThreads] = useState<MessageThread[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -146,7 +156,7 @@ export default function AudienceInboxPage() {
   const [activeTab, setActiveTab] = useState<'todo' | 'done' | 'trash' | 'all'>('todo');
   const [selectedSource, setSelectedSource] = useState<'all' | 'email-marketing' | 'contact-form'>('all');
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
-  
+
   // Navigation / Panes on Mobile
   const [activePane, setActivePane] = useState<'sidebar' | 'list' | 'detail'>('list');
 
@@ -161,11 +171,13 @@ export default function AudienceInboxPage() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isTagPopupOpen, setIsTagPopupOpen] = useState(false);
   const [isLabelPopupOpen, setIsLabelPopupOpen] = useState(false);
-  
+
   // New conversation form (Compose)
   const [composeTo, setComposeTo] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
   const [composeSource, setComposeSource] = useState<'email-marketing' | 'contact-form'>('email-marketing');
+  const [composeMode, setComposeMode] = useState<'text' | 'template'>('text');
+  const [composeTemplateId, setComposeTemplateId] = useState('');
   const [composeMessage, setComposeMessage] = useState('');
 
   // Dropdown states
@@ -178,18 +190,15 @@ export default function AudienceInboxPage() {
       try {
         const parsed = JSON.parse(saved);
         setThreads(parsed);
-        if (parsed.length > 0) {
-          setSelectedThreadId(parsed[0].id);
-        }
+        // By default, do not select a thread so the empty state shows
+        setSelectedThreadId(null);
       } catch (e) {
         setThreads(DEFAULT_THREADS);
-        setSelectedThreadId(DEFAULT_THREADS[0].id);
+        setSelectedThreadId(null);
       }
     } else {
       setThreads(DEFAULT_THREADS);
-      if (DEFAULT_THREADS.length > 0) {
-        setSelectedThreadId(DEFAULT_THREADS[0].id);
-      }
+      setSelectedThreadId(null);
     }
   }, [activeBusinessId]);
 
@@ -350,7 +359,7 @@ export default function AudienceInboxPage() {
     setComposeSubject('');
     setComposeMessage('');
     addToast('Conversation created!', 'success');
-    
+
     // Switch pane on mobile
     setActivePane('detail');
   };
@@ -508,7 +517,7 @@ export default function AudienceInboxPage() {
   // Contact Suggestion Helper for Compose input
   const filteredSuggestions = useMemo(() => {
     if (!composeTo) return [];
-    return dbContacts.filter(c => 
+    return dbContacts.filter(c =>
       c.email.toLowerCase().includes(composeTo.toLowerCase()) ||
       (c.firstName && c.firstName.toLowerCase().includes(composeTo.toLowerCase())) ||
       (c.lastName && c.lastName.toLowerCase().includes(composeTo.toLowerCase()))
@@ -520,20 +529,24 @@ export default function AudienceInboxPage() {
 
       {/* Main Inbox Dashboard Frame */}
       <div className="flex flex-1 overflow-hidden">
-        
+
         {/* ========================================================
             COLUMN 1: LEFT SIDEBAR
             ======================================================== */}
-        <aside className={`w-64 border-r border-gray-200 flex flex-col bg-white flex-shrink-0 transition-all duration-300
-          ${activePane === 'sidebar' ? 'block w-full' : 'hidden md:flex'}`}>
-          
+        <aside className={`border-r border-gray-200 bg-white flex-shrink-0 transition-all duration-300 flex flex-col
+          ${activePane === 'sidebar' ? 'w-full md:w-64 flex' : 'hidden md:flex md:w-64'}`}>
+
           {/* Brand header */}
           <div className="p-4 border-b border-gray-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-[#007c89] flex items-center justify-center text-white">
-                <Mail className="w-4 h-4" />
-              </div>
-              <span className="font-bold text-gray-900 text-lg">Inbox</span>
+              <Link
+                href="/audience"
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-50 border border-gray-200 text-gray-500 hover:text-[#007c89] hover:border-[#007c89]/30 hover:bg-[#007c89]/5 transition-all shadow-xs"
+                title="Back to Templates"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Link>
+              <span className="ml-5 font-bold text-gray-900 text-lg">Inbox</span>
             </div>
             {/* Mobile close button */}
             <button className="md:hidden p-1 text-gray-500 hover:bg-gray-100 rounded" onClick={() => setActivePane('list')}>
@@ -543,7 +556,7 @@ export default function AudienceInboxPage() {
 
           {/* Action Compose button */}
           <div className="p-4">
-            <button 
+            <button
               onClick={() => setIsComposeOpen(true)}
               className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-gray-300 font-bold text-gray-700 bg-white hover:bg-gray-50 shadow-sm transition-all duration-150 text-sm"
             >
@@ -562,7 +575,7 @@ export default function AudienceInboxPage() {
               </div>
               <div className="space-y-0.5">
                 <button
-                  onClick={() => { setSelectedSource('all'); if(window.innerWidth < 768) setActivePane('list'); }}
+                  onClick={() => { setSelectedSource('all'); if (window.innerWidth < 768) setActivePane('list'); }}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between font-semibold transition-all
                     ${selectedSource === 'all' ? 'bg-[#f2fafb] text-[#007c89]' : 'text-gray-700 hover:bg-gray-50'}`}
                 >
@@ -572,7 +585,7 @@ export default function AudienceInboxPage() {
                   </span>
                 </button>
                 <button
-                  onClick={() => { setSelectedSource('email-marketing'); if(window.innerWidth < 768) setActivePane('list'); }}
+                  onClick={() => { setSelectedSource('email-marketing'); if (window.innerWidth < 768) setActivePane('list'); }}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between font-semibold transition-all
                     ${selectedSource === 'email-marketing' ? 'bg-[#f2fafb] text-[#007c89]' : 'text-gray-700 hover:bg-gray-50'}`}
                 >
@@ -582,7 +595,7 @@ export default function AudienceInboxPage() {
                   </span>
                 </button>
                 <button
-                  onClick={() => { setSelectedSource('contact-form'); if(window.innerWidth < 768) setActivePane('list'); }}
+                  onClick={() => { setSelectedSource('contact-form'); if (window.innerWidth < 768) setActivePane('list'); }}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between font-semibold transition-all
                     ${selectedSource === 'contact-form' ? 'bg-[#f2fafb] text-[#007c89]' : 'text-gray-700 hover:bg-gray-50'}`}
                 >
@@ -602,7 +615,7 @@ export default function AudienceInboxPage() {
               </div>
               <div className="space-y-0.5">
                 <button
-                  onClick={() => { setSelectedLabel(null); if(window.innerWidth < 768) setActivePane('list'); }}
+                  onClick={() => { setSelectedLabel(null); if (window.innerWidth < 768) setActivePane('list'); }}
                   className={`w-full text-left px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 font-semibold transition-all
                     ${selectedLabel === null ? 'bg-[#f2fafb] text-[#007c89]' : 'text-gray-700 hover:bg-gray-50'}`}
                 >
@@ -615,7 +628,7 @@ export default function AudienceInboxPage() {
                   allLabels.map(l => (
                     <button
                       key={l}
-                      onClick={() => { setSelectedLabel(l); if(window.innerWidth < 768) setActivePane('list'); }}
+                      onClick={() => { setSelectedLabel(l); if (window.innerWidth < 768) setActivePane('list'); }}
                       className={`w-full text-left px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 font-semibold transition-all
                         ${selectedLabel === l ? 'bg-[#f2fafb] text-[#007c89]' : 'text-gray-700 hover:bg-gray-50'}`}
                     >
@@ -641,7 +654,7 @@ export default function AudienceInboxPage() {
 
             {/* Add Source Shortcut */}
             <div>
-              <button 
+              <button
                 onClick={() => addToast('Add source integrations coming soon!', 'info')}
                 className="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-[#007c89] hover:bg-teal-50/50 flex items-center gap-2"
               >
@@ -653,16 +666,16 @@ export default function AudienceInboxPage() {
 
           {/* Feedback footer */}
           <div className="p-4 border-t border-gray-100 text-xs text-gray-400">
-            Have feedback? <a href="#" className="text-[#007c89] hover:underline font-semibold" onClick={(e) => {e.preventDefault(); addToast('Feedback form coming soon!', 'info');}}>Let us know.</a>
+            Have feedback? <a href="#" className="text-[#007c89] hover:underline font-semibold" onClick={(e) => { e.preventDefault(); addToast('Feedback form coming soon!', 'info'); }}>Let us know.</a>
           </div>
         </aside>
 
         {/* ========================================================
-            COLUMN 2: MIDDLE MESSAGE LIST
+            COLUMN 2: MESSAGE LIST
             ======================================================== */}
-        <section className={`w-80 border-r border-gray-200 flex flex-col bg-gray-50/50 flex-shrink-0 transition-all duration-300
-          ${activePane === 'list' ? 'block w-full' : (activePane === 'sidebar' || activePane === 'detail') ? 'hidden md:flex' : 'hidden md:flex'}`}>
-          
+        <section className={`border-r border-gray-200 bg-white flex-shrink-0 transition-all duration-300 flex flex-col
+          ${activePane === 'list' ? 'w-full md:w-96 flex' : 'hidden md:flex md:w-96'}`}>
+
           {/* Header search bar */}
           <div className="p-4 bg-white border-b border-gray-200 flex flex-col gap-3">
             <div className="flex items-center gap-2 md:hidden">
@@ -671,7 +684,7 @@ export default function AudienceInboxPage() {
               </button>
               <span className="font-bold text-gray-900">Conversations</span>
             </div>
-            
+
             <div className="relative">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
               <input
@@ -725,7 +738,7 @@ export default function AudienceInboxPage() {
                 const contactName = `${t.contact.firstName || ''} ${t.contact.lastName || ''}`.trim() || t.contact.email;
                 const latestMsg = t.messages[t.messages.length - 1];
                 const displayDate = latestMsg ? latestMsg.timestamp.split(' ').slice(1, 3).join(' ') : '';
-                
+
                 return (
                   <div
                     key={t.id}
@@ -733,11 +746,10 @@ export default function AudienceInboxPage() {
                       setSelectedThreadId(t.id);
                       setActivePane('detail');
                     }}
-                    className={`p-4 cursor-pointer relative transition-all duration-150 ${
-                      isSelected 
-                        ? 'bg-[#007c89] text-white shadow-sm' 
-                        : 'bg-white text-gray-700 hover:bg-gray-50'
-                    }`}
+                    className={`p-4 cursor-pointer relative transition-all duration-150 ${isSelected
+                      ? 'bg-[#007c89] text-white shadow-sm'
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
                   >
                     {/* Unread circle badge */}
                     {t.unread && (
@@ -776,11 +788,10 @@ export default function AudienceInboxPage() {
                     {t.contact.labels.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {t.contact.labels.map(l => (
-                          <span 
+                          <span
                             key={l}
-                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
-                              isSelected ? 'bg-teal-700/60 text-white' : 'bg-gray-100 text-gray-500'
-                            }`}
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${isSelected ? 'bg-teal-700/60 text-white' : 'bg-gray-100 text-gray-500'
+                              }`}
                           >
                             {l}
                           </span>
@@ -797,279 +808,191 @@ export default function AudienceInboxPage() {
         {/* ========================================================
             COLUMN 3: RIGHT DETAIL PANE
             ======================================================== */}
-        <section className={`flex-1 flex flex-col bg-white min-w-0 transition-all duration-300
-          ${activePane === 'detail' ? 'block w-full' : 'hidden md:flex'}`}>
-          
+        <section className={`bg-[#fbfbfb] min-w-0 transition-all duration-300 flex flex-col
+          ${activePane === 'detail' ? 'w-full md:flex-1 flex' : 'hidden md:flex md:flex-1'}`}>
+
           {selectedThread ? (
             <div className="flex-1 flex flex-col h-full relative">
-              
-              {/* Thread Header details */}
-              <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white flex-shrink-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  {/* Back button (Mobile only) */}
-                  <button className="md:hidden p-1.5 text-gray-500 hover:bg-gray-100 rounded mr-1" onClick={() => setActivePane('list')}>
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
 
-                  {/* Profile Avatar circle */}
-                  <div className="w-10 h-10 rounded-full bg-[#007c89]/10 text-[#007c89] flex items-center justify-center font-bold text-base flex-shrink-0">
-                    {selectedThread.contact.firstName?.charAt(0) || selectedThread.contact.email.charAt(0).toUpperCase()}
-                  </div>
-
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-gray-900 truncate">
-                        {`${selectedThread.contact.firstName || ''} ${selectedThread.contact.lastName || ''}`.trim() || 'No Name'}
-                      </span>
-                      <a 
-                        href={`mailto:${selectedThread.contact.email}`} 
-                        className="text-xs text-gray-400 hover:underline truncate"
-                      >
-                        {selectedThread.contact.email}
-                      </a>
-                    </div>
-                    {/* Source label */}
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-bold uppercase tracking-wider">
-                        {selectedThread.contact.source === 'email-marketing' ? 'Email Campaign Reply' : 'Contact Form Inquiry'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+              {/* Thread Header details (Right aligned actions only) */}
+              <div className="p-4 flex items-center justify-end bg-transparent flex-shrink-0 gap-2 border-none">
+                {/* Back button (Mobile only) */}
+                <button className="md:hidden p-1.5 text-gray-500 hover:bg-gray-200 rounded mr-auto" onClick={() => setActivePane('list')}>
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
 
                 {/* Right side actions */}
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsProfileOpen(true)}
-                    className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all shadow-sm"
+                    className="flex items-center gap-1.5 py-1.5 px-3 rounded text-sm font-semibold text-gray-600 bg-gray-100 border border-gray-200 hover:bg-gray-200 transition-all"
                   >
-                    <User className="w-3.5 h-3.5 text-gray-500" />
-                    <span className="hidden sm:inline">View Profile</span>
+                    <User className="w-4 h-4" />
+                    <span>View Profile</span>
                   </button>
                   <button
                     onClick={() => setIsTagPopupOpen(true)}
-                    className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all shadow-sm"
+                    className="flex items-center gap-1.5 py-1.5 px-3 rounded text-sm font-semibold text-gray-600 bg-gray-100 border border-gray-200 hover:bg-gray-200 transition-all"
                   >
-                    <Plus className="w-3.5 h-3.5 text-gray-500" />
-                    <Tag className="w-3.5 h-3.5 text-gray-500" />
-                    <span className="hidden sm:inline">Tag Contact</span>
+                    <Plus className="w-4 h-4" />
+                    <span>Tag Contact</span>
                   </button>
                   {selectedThread.status !== 'trash' ? (
                     <button
                       onClick={() => handleStatusChange('trash')}
-                      className="p-1.5 rounded-lg border border-gray-200 text-gray-500 bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all shadow-sm"
-                      title="Move to Trash"
+                      className="flex items-center gap-1.5 py-1.5 px-3 rounded text-sm font-semibold text-gray-600 bg-gray-100 border border-gray-200 hover:bg-gray-200 transition-all"
                     >
                       <Trash2 className="w-4 h-4" />
+                      <span>Mark as Trash</span>
                     </button>
                   ) : (
                     <button
                       onClick={() => handleStatusChange('todo')}
-                      className="p-1.5 rounded-lg border border-gray-200 text-gray-500 bg-white hover:bg-sky-50 hover:text-[#007c89] hover:border-sky-100 transition-all shadow-sm"
-                      title="Restore to To Do"
+                      className="flex items-center gap-1.5 py-1.5 px-3 rounded text-sm font-semibold text-gray-600 bg-gray-100 border border-gray-200 hover:bg-gray-200 transition-all"
                     >
                       <Archive className="w-4 h-4" />
+                      <span>Restore</span>
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* Thread Subject area */}
-              <div className="px-6 py-4 border-b border-gray-100 bg-white flex-shrink-0">
-                <h2 className="text-xl font-bold text-gray-900 leading-tight mb-2">
-                  {selectedThread.subject}
-                </h2>
-                
-                {/* Labels applied list */}
-                <div className="flex items-center flex-wrap gap-2">
-                  {selectedThread.contact.labels.map(l => (
-                    <span 
-                      key={l} 
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-[#007c89] font-bold uppercase tracking-wider flex items-center gap-1"
-                    >
-                      {l}
-                      <button 
-                        onClick={() => handleAddLabel(l)}
-                        className="hover:bg-teal-100/80 rounded-full p-0.5 text-teal-600 transition-all"
+              {/* Message scroll stream */}
+              <div className="flex-1 overflow-y-auto px-10 py-10 bg-white mx-6 mb-6 shadow-sm border border-gray-100 rounded-lg relative">
+
+                {/* Thread Subject area */}
+                <div className="mb-12">
+                  <h2 className="text-[32px] font-normal text-gray-800 mb-2 leading-tight">
+                    {selectedThread.subject}
+                  </h2>
+
+                  {/* Labels applied list */}
+                  <div className="flex items-center flex-wrap gap-2">
+                    {selectedThread.contact.labels.map(l => (
+                      <span
+                        key={l}
+                        className="text-xs px-2 py-1 rounded bg-teal-50 text-[#007c89] font-medium flex items-center gap-1"
                       >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </span>
-                  ))}
-                  <button
-                    onClick={() => setIsLabelPopupOpen(true)}
-                    className="text-[10px] py-0.5 px-2 rounded-full border border-dashed border-gray-300 text-gray-500 hover:border-[#007c89] hover:text-[#007c89] font-semibold flex items-center gap-1 transition-all"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Label
-                  </button>
+                        {l}
+                        <button
+                          onClick={() => handleAddLabel(l)}
+                          className="hover:bg-teal-100 rounded text-teal-600 transition-all"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <button
+                      onClick={() => setIsLabelPopupOpen(true)}
+                      className="text-[15px] text-[#007c89] hover:underline flex items-center gap-1 font-medium"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Label
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-10 pb-32">
+                  {selectedThread.messages.map((m) => {
+                    const isOutgoing = m.type === 'outgoing';
+                    const isComment = m.type === 'comment';
+
+                    return (
+                      <div key={m.id} className="flex gap-4">
+                        {/* Avatar */}
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 mt-0.5 ${isComment ? 'bg-yellow-100 text-yellow-700' :
+                          isOutgoing ? 'bg-gray-200 text-gray-700' : 'bg-[#f6e6bd] text-[#5e4b17]'
+                          }`}>
+                          {m.senderName.charAt(0).toUpperCase()}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-[15px] text-gray-900">{m.senderName}</span>
+                              {isOutgoing && (
+                                <span className="text-sm text-gray-500">
+                                  (sent as {m.senderName.split(' ')[0].toLowerCase()})
+                                </span>
+                              )}
+                              {isComment && (
+                                <span className="text-[11px] text-yellow-600 font-bold uppercase tracking-wider bg-yellow-50 px-2 py-0.5 rounded">
+                                  Internal Note
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-sm text-gray-500 whitespace-nowrap ml-4">{m.timestamp}</span>
+                          </div>
+
+                          <div className={`text-[15px] whitespace-pre-wrap leading-relaxed ${isComment ? 'text-yellow-800 bg-yellow-50/50 p-4 rounded-lg' : 'text-gray-800'}`}>
+                            {m.content}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Message scroll stream */}
-              <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50 space-y-6 pb-24">
-                {selectedThread.messages.map((m) => {
-                  if (m.type === 'comment') {
-                    // Internal Note styled box
-                    return (
-                      <div key={m.id} className="max-w-3xl mx-auto bg-yellow-50 border border-yellow-200 rounded-xl p-4 shadow-sm text-yellow-800">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center font-bold text-xs">
-                              N
-                            </div>
-                            <span className="font-bold text-xs text-yellow-900">{m.senderName}</span>
-                            <span className="text-[10px] text-yellow-600 font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-yellow-200/50">Internal Comment</span>
-                          </div>
-                          <span className="text-[10px] text-yellow-600 font-medium">{m.timestamp}</span>
-                        </div>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed text-yellow-900">
-                          {m.content}
-                        </p>
-                      </div>
-                    );
-                  }
-
-                  const isOutgoing = m.type === 'outgoing';
-                  return (
-                    <div key={m.id} className="max-w-3xl mx-auto flex gap-3 items-start">
-                      {/* Left side profile initial badge (only if incoming) */}
-                      {!isOutgoing && (
-                        <div className="w-8 h-8 rounded-full bg-[#007c89]/10 text-[#007c89] flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-sm">
-                          {m.senderName.charAt(0)}
-                        </div>
-                      )}
-
-                      {/* Message bubble card */}
-                      <div className={`flex-1 bg-white rounded-2xl border border-gray-200 p-5 shadow-sm min-w-0 ${
-                        isOutgoing ? 'border-sky-100 bg-sky-50/30' : ''
-                      }`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-xs text-gray-900">{m.senderName}</span>
-                            {isOutgoing && (
-                              <span className="text-[10px] text-sky-600 font-bold uppercase tracking-wide">
-                                (replied)
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-gray-400 font-medium">{m.timestamp}</span>
-                        </div>
-
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed text-gray-700">
-                          {m.content}
-                        </p>
-                      </div>
-
-                      {/* Right side profile initial (only if outgoing) */}
-                      {isOutgoing && (
-                        <div className="w-8 h-8 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-sm">
-                          Y
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Bottom Sticky Action box */}
-              <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 flex flex-col gap-4 shadow-[0_-4px_12px_rgba(0,0,0,0.02)] flex-shrink-0 z-10">
-                {isReplying ? (
-                  // Inline Reply input text area
-                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span>Replying to <strong>{selectedThread.contact.email}</strong></span>
-                      <button onClick={() => setIsReplying(false)} className="text-gray-400 hover:text-gray-600">
-                        <X className="w-4 h-4" />
+              {/* Bottom Sticky Action box (Floating Pill) */}
+              <div className="absolute bottom-12 right-12 z-10 flex flex-col shadow-[0_4px_20px_rgba(0,0,0,0.08)] rounded-md overflow-hidden bg-gray-50 border border-gray-200">
+                {isReplying || isCommenting ? (
+                  // Inline Reply/Comment input
+                  <div className="bg-white p-5 min-w-[500px] flex flex-col gap-3">
+                    <div className="flex items-center justify-between text-sm font-semibold text-gray-800">
+                      <span>{isReplying ? 'Reply to conversation' : 'Add an internal comment'}</span>
+                      <button onClick={() => { setIsReplying(false); setIsCommenting(false); }} className="text-gray-400 hover:text-gray-600">
+                        <X className="w-5 h-5" />
                       </button>
                     </div>
                     <textarea
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      placeholder="Write your email reply..."
-                      className="w-full min-h-[100px] bg-transparent resize-y text-sm text-gray-700 placeholder-gray-400 focus:outline-none"
+                      value={isReplying ? replyText : commentText}
+                      onChange={(e) => isReplying ? setReplyText(e.target.value) : setCommentText(e.target.value)}
+                      className="w-full min-h-[120px] border border-gray-300 rounded p-3 text-[15px] focus:outline-none focus:border-[#007c89] focus:ring-1 focus:ring-[#007c89]"
+                      placeholder={isReplying ? 'Type your reply...' : 'Type your note...'}
                     />
-                    <div className="flex justify-end gap-2">
-                      <button 
-                        onClick={() => setIsReplying(false)}
-                        className="py-1.5 px-3 rounded-lg border border-gray-200 text-xs font-bold text-gray-600 bg-white hover:bg-gray-50 transition-all"
+                    <div className="flex justify-end gap-3 mt-2">
+                      <button
+                        onClick={() => { setIsReplying(false); setIsCommenting(false); }}
+                        className="py-2 px-4 rounded border border-gray-300 text-sm font-semibold bg-white hover:bg-gray-50 text-gray-700 transition-colors"
                       >
                         Cancel
                       </button>
-                      <button 
-                        onClick={handleReplySubmit}
-                        className="py-1.5 px-3 rounded-lg text-xs font-bold text-white bg-[#007c89] hover:bg-[#006570] transition-all flex items-center gap-1.5 shadow-sm"
+                      <button
+                        onClick={isReplying ? handleReplySubmit : handleCommentSubmit}
+                        className="py-2 px-4 rounded text-sm font-semibold text-white bg-[#007c89] hover:bg-[#006570] transition-colors"
                       >
-                        <Send className="w-3 h-3" />
-                        Send Reply
-                      </button>
-                    </div>
-                  </div>
-                ) : isCommenting ? (
-                  // Inline Comment input text area
-                  <div className="bg-yellow-50/50 border border-yellow-200 rounded-xl p-3 flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-xs text-yellow-800">
-                      <span>Add internal comment (note visible only to agents)</span>
-                      <button onClick={() => setIsCommenting(false)} className="text-yellow-600 hover:text-yellow-800">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <textarea
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      placeholder="Write internal note..."
-                      className="w-full min-h-[100px] bg-transparent resize-y text-sm text-yellow-900 placeholder-yellow-600/60 focus:outline-none"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <button 
-                        onClick={() => setIsCommenting(false)}
-                        className="py-1.5 px-3 rounded-lg border border-yellow-200 text-xs font-bold text-yellow-700 bg-white hover:bg-yellow-100/50 transition-all"
-                      >
-                        Cancel
-                      </button>
-                      <button 
-                        onClick={handleCommentSubmit}
-                        className="py-1.5 px-3 rounded-lg text-xs font-bold text-white bg-yellow-600 hover:bg-yellow-700 transition-all flex items-center gap-1.5 shadow-sm"
-                      >
-                        <CornerDownLeft className="w-3 h-3" />
-                        Save Comment
+                        {isReplying ? 'Send' : 'Save Comment'}
                       </button>
                     </div>
                   </div>
                 ) : (
-                  // Standard bottom actions
-                  <div className="flex items-center gap-2">
-                    {selectedThread.status !== 'done' && (
-                      <button
-                        onClick={() => handleStatusChange('done')}
-                        className="py-2 px-4 rounded-xl border border-gray-200 text-sm font-bold text-gray-700 bg-white hover:bg-green-50 hover:text-green-600 hover:border-green-100 flex items-center gap-1.5 shadow-sm transition-all"
-                      >
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                        Mark as Done
-                      </button>
-                    )}
-                    {selectedThread.status === 'done' && (
-                      <button
-                        onClick={() => handleStatusChange('todo')}
-                        className="py-2 px-4 rounded-xl border border-gray-200 text-sm font-bold text-gray-700 bg-white hover:bg-sky-50 hover:text-[#007c89] hover:border-sky-100 flex items-center gap-1.5 shadow-sm transition-all"
-                      >
-                        <Archive className="w-4 h-4 text-sky-500" />
-                        Mark as To Do
-                      </button>
-                    )}
+                  // Standard bottom actions (The pill)
+                  <div className="flex items-center text-[15px] font-semibold text-gray-700 bg-gray-100">
+                    <button
+                      onClick={() => handleStatusChange(selectedThread.status === 'done' ? 'todo' : 'done')}
+                      className="py-3 px-5 flex items-center gap-2 hover:bg-gray-200 transition-colors"
+                    >
+                      {selectedThread.status === 'done' ? (
+                        <><Archive className="w-4 h-4 text-gray-500" /> Mark as To Do</>
+                      ) : (
+                        <><Check className="w-4 h-4 text-gray-500" /> Mark as Done</>
+                      )}
+                    </button>
+                    <div className="w-px h-6 bg-gray-300" />
                     <button
                       onClick={() => setIsReplying(true)}
-                      className="py-2 px-4 rounded-xl text-sm font-bold text-white bg-[#007c89] hover:bg-[#006570] flex items-center gap-1.5 shadow-sm transition-all ml-auto"
+                      className="py-3 px-5 flex items-center gap-2 hover:bg-gray-200 transition-colors"
                     >
-                      <CornerDownLeft className="w-4 h-4" />
-                      Reply
+                      <CornerDownLeft className="w-4 h-4 text-gray-500" /> Reply
                     </button>
+                    <div className="w-px h-6 bg-gray-300" />
                     <button
                       onClick={() => setIsCommenting(true)}
-                      className="py-2 px-4 rounded-xl border border-gray-200 text-sm font-bold text-gray-700 bg-white hover:bg-gray-50 flex items-center gap-1.5 shadow-sm transition-all"
+                      className="py-3 px-5 flex items-center gap-2 hover:bg-gray-200 transition-colors"
                     >
-                      <MessageSquare className="w-4 h-4 text-gray-500" />
-                      Add Comment
+                      <MessageSquare className="w-4 h-4 text-gray-500" /> Add Comment
                     </button>
                   </div>
                 )}
@@ -1120,7 +1043,7 @@ export default function AudienceInboxPage() {
                   className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#007c89]/50 focus:border-[#007c89] transition-all"
                   required
                 />
-                
+
                 {/* Suggestions popup list */}
                 {showComposeSuggestions && filteredSuggestions.length > 0 && (
                   <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 text-xs">
@@ -1171,17 +1094,78 @@ export default function AudienceInboxPage() {
                 </select>
               </div>
 
-              {/* Message */}
+              {/* Compose Mode Toggle */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Message</label>
-                <textarea
-                  value={composeMessage}
-                  onChange={(e) => setComposeMessage(e.target.value)}
-                  placeholder="Type the message body here..."
-                  className="w-full min-h-[120px] bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#007c89]/50 focus:border-[#007c89] transition-all"
-                  required
-                />
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Message Type</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="composeMode"
+                      value="text"
+                      checked={composeMode === 'text'}
+                      onChange={() => { setComposeMode('text'); setComposeMessage(''); }}
+                      className="text-[#007c89] focus:ring-[#007c89]"
+                    />
+                    Simple Text
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="composeMode"
+                      value="template"
+                      checked={composeMode === 'template'}
+                      onChange={() => setComposeMode('template')}
+                      className="text-[#007c89] focus:ring-[#007c89]"
+                    />
+                    Use Email Template
+                  </label>
+                </div>
               </div>
+
+              {/* Template Selection or Text Area */}
+              {composeMode === 'template' ? (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Select Template</label>
+                  <select
+                    value={composeTemplateId}
+                    onChange={(e) => {
+                      const tId = e.target.value;
+                      setComposeTemplateId(tId);
+                      const tpl = dbTemplates.find((t: any) => t.id === tId);
+                      if (tpl) {
+                        setComposeMessage(tpl.htmlContent || '');
+                        if (!composeSubject) setComposeSubject(tpl.name || '');
+                      } else {
+                        setComposeMessage('');
+                      }
+                    }}
+                    className="w-full bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#007c89]/50 focus:border-[#007c89] transition-all"
+                    required
+                  >
+                    <option value="">-- Choose a saved template --</option>
+                    {dbTemplates.map((t: any) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  {composeMessage && (
+                    <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-500 italic max-h-32 overflow-y-auto">
+                      Preview: HTML Template Loaded
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Message</label>
+                  <textarea
+                    value={composeMessage}
+                    onChange={(e) => setComposeMessage(e.target.value)}
+                    placeholder="Type the message body here..."
+                    className="w-full min-h-[120px] bg-gray-50 border border-gray-300 rounded-lg px-4 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#007c89]/50 focus:border-[#007c89] transition-all"
+                    required
+                  />
+                </div>
+              )}
 
               {/* Buttons */}
               <div className="pt-4 border-t border-gray-100 flex justify-end gap-2">
@@ -1212,7 +1196,7 @@ export default function AudienceInboxPage() {
         <div className="fixed inset-0 z-50 flex justify-end bg-black/30 animate-in fade-in duration-200">
           {/* Backdrop close target */}
           <div className="absolute inset-0" onClick={() => setIsProfileOpen(false)} />
-          
+
           <div className="relative bg-white w-full max-w-md h-full shadow-2xl border-l border-gray-200 flex flex-col z-10 animate-in slide-in-from-right duration-300">
             {/* Drawer Header */}
             <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white">
@@ -1246,21 +1230,21 @@ export default function AudienceInboxPage() {
               {/* Basic Fields */}
               <div className="space-y-4">
                 <h5 className="text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-1">Details</h5>
-                
+
                 <div className="grid grid-cols-3 text-sm">
                   <span className="text-gray-400 font-semibold">Phone:</span>
                   <span className="col-span-2 text-gray-700 font-medium">
                     {selectedThread.contact.phoneNumber || <span className="text-gray-300 italic">None</span>}
                   </span>
                 </div>
-                
+
                 <div className="grid grid-cols-3 text-sm">
                   <span className="text-gray-400 font-semibold">Company:</span>
                   <span className="col-span-2 text-gray-700 font-medium">
                     {selectedThread.contact.company || <span className="text-gray-300 italic">None</span>}
                   </span>
                 </div>
-                
+
                 <div className="grid grid-cols-3 text-sm">
                   <span className="text-gray-400 font-semibold">Channel:</span>
                   <span className="col-span-2 text-gray-700 font-medium capitalize">
@@ -1289,7 +1273,7 @@ export default function AudienceInboxPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-1">
                   <h5 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Tags</h5>
-                  <button 
+                  <button
                     onClick={() => setIsTagPopupOpen(true)}
                     className="text-[#007c89] hover:underline font-bold text-xs flex items-center gap-0.5"
                   >
@@ -1301,7 +1285,7 @@ export default function AudienceInboxPage() {
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {selectedThread.contact.tags.map(t => (
-                      <span 
+                      <span
                         key={t}
                         className="text-xs px-2.5 py-1 bg-gray-100 rounded-lg text-gray-600 font-bold"
                       >
@@ -1316,7 +1300,7 @@ export default function AudienceInboxPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-1">
                   <h5 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Labels</h5>
-                  <button 
+                  <button
                     onClick={() => setIsLabelPopupOpen(true)}
                     className="text-[#007c89] hover:underline font-bold text-xs flex items-center gap-0.5"
                   >
@@ -1328,7 +1312,7 @@ export default function AudienceInboxPage() {
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {selectedThread.contact.labels.map(l => (
-                      <span 
+                      <span
                         key={l}
                         className="text-xs px-2.5 py-1 bg-teal-50 border border-teal-200 text-[#007c89] font-bold rounded-lg"
                       >
@@ -1357,7 +1341,7 @@ export default function AudienceInboxPage() {
             </div>
             <div className="p-5 space-y-4">
               <p className="text-xs text-gray-400">Select standard tags to assign to this contact:</p>
-              
+
               {/* Popular tags selection */}
               <div className="flex flex-wrap gap-2">
                 {['VIP', 'Hot Lead', 'Customer', 'Prospect', 'Enterprise', 'Partner'].map(tag => {
@@ -1367,11 +1351,10 @@ export default function AudienceInboxPage() {
                       key={tag}
                       type="button"
                       onClick={() => handleAddTag(tag)}
-                      className={`text-xs px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1 font-bold ${
-                        hasTag 
-                          ? 'bg-[#007c89] border-[#007c89] text-white' 
-                          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                      }`}
+                      className={`text-xs px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1 font-bold ${hasTag
+                        ? 'bg-[#007c89] border-[#007c89] text-white'
+                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
                     >
                       {tag}
                       {hasTag && <Check className="w-3 h-3" />}
@@ -1426,7 +1409,7 @@ export default function AudienceInboxPage() {
             </div>
             <div className="p-5 space-y-4">
               <p className="text-xs text-gray-400">Select conversation classification labels:</p>
-              
+
               {/* Popular labels list */}
               <div className="flex flex-wrap gap-2">
                 {['Urgent', 'Billing', 'Sales', 'Feedback', 'Support', 'Tech Issue'].map(lbl => {
@@ -1436,11 +1419,10 @@ export default function AudienceInboxPage() {
                       key={lbl}
                       type="button"
                       onClick={() => handleAddLabel(lbl)}
-                      className={`text-xs px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1 font-bold ${
-                        hasLbl 
-                          ? 'bg-[#007c89] border-[#007c89] text-white shadow-sm' 
-                          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                      }`}
+                      className={`text-xs px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1 font-bold ${hasLbl
+                        ? 'bg-[#007c89] border-[#007c89] text-white shadow-sm'
+                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
                     >
                       {lbl}
                       {hasLbl && <Check className="w-3 h-3" />}

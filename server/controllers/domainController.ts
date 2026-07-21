@@ -69,14 +69,14 @@ export const sendDomainVerificationEmail = async ({ email, userId }: { email: st
 
         if (existing) {
              await db.update(domainVerifications)
-                 .set({ token: hashedToken, email: lowerEmail, status: 'pending' })
+                 .set({ verificationToken: hashedToken, email: lowerEmail, status: 'pending' })
                  .where(eq(domainVerifications.id, existing.id));
         } else {
              await db.insert(domainVerifications).values({
                  userId,
                  email: lowerEmail,
                  domain,
-                 token: hashedToken,
+                 verificationToken: hashedToken,
                  status: 'pending'
              });
         }
@@ -100,7 +100,7 @@ export const confirmDomainToken = async ({ token }: { token: string }) => {
     try {
         const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
         const record = await db.query.domainVerifications.findFirst({
-            where: eq(domainVerifications.token, hashedToken)
+            where: eq(domainVerifications.verificationToken, hashedToken)
         });
 
         if (!record) {

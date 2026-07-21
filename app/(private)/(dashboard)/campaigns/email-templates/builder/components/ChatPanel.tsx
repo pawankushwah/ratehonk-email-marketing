@@ -15,6 +15,9 @@ interface ChatPanelProps {
   isGenerating: boolean;
   onSendMessage: (text: string) => void;
   onClearChat: () => void;
+  providers: { id: string, name: string, isConnected?: boolean }[];
+  selectedProvider: string;
+  onProviderChange: (id: string) => void;
 }
 
 const STARTER_PROMPTS = [
@@ -27,7 +30,10 @@ export default function ChatPanel({
   messages,
   isGenerating,
   onSendMessage,
-  onClearChat
+  onClearChat,
+  providers,
+  selectedProvider,
+  onProviderChange
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -50,8 +56,10 @@ export default function ChatPanel({
     }
   };
 
+  const selectedProviderObj = providers.find(p => p.id === selectedProvider);
+
   return (
-    <div className="bg-white border border-border rounded-xl shadow-sm flex flex-col h-[650px] overflow-hidden">
+    <div className="bg-white border border-border rounded-xl shadow-sm flex flex-col h-full min-h-0 overflow-hidden">
       {/* Panel Header */}
       <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-gray-50/50">
         <div className="flex items-center space-x-3">
@@ -64,15 +72,33 @@ export default function ChatPanel({
           </div>
         </div>
         
-        {messages.length > 0 && (
-          <button
-            onClick={onClearChat}
-            className="flex items-center gap-1 text-xs font-semibold text-text-dim hover:text-red-500 transition-colors py-1.5 px-2 rounded-md hover:bg-red-50"
-            title="Clear conversation"
-          >
-            <Trash2 className="w-3.5 h-3.5" /> Clear
-          </button>
-        )}
+        {/* Provider Selector and Actions */}
+        <div className="flex items-center gap-3">
+          {providers.length > 0 && (
+            <select
+              value={selectedProvider}
+              onChange={(e) => onProviderChange(e.target.value)}
+              className="text-xs font-semibold bg-white border border-border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-sky-500 text-text cursor-pointer shadow-sm max-w-[160px] truncate"
+              disabled={isGenerating}
+            >
+              {providers.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name} {p.isConnected ? '' : '(Not Connected)'}
+                </option>
+              ))}
+            </select>
+          )}
+          
+          {messages.length > 0 && (
+            <button
+              onClick={onClearChat}
+              className="flex items-center gap-1 text-xs font-semibold text-text-dim hover:text-red-500 transition-colors py-1.5 px-2 rounded-md hover:bg-red-50"
+              title="Clear conversation"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Conversation Area */}
@@ -154,32 +180,51 @@ export default function ChatPanel({
 
       {/* Input Area */}
       <div className="p-4 border-t border-border bg-gray-50/50 flex flex-col gap-3">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Example: Create a modern welcome email for new users with a blue theme..."
-          className="w-full h-20 p-3 bg-white border border-border rounded-lg text-sm text-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-500/50 resize-none transition-all"
-          disabled={isGenerating}
-        />
-        
-        <div className="flex justify-between items-center">
-          <span className="text-[11px] text-text-dim">
-            Press <kbd className="px-1 py-0.5 bg-gray-100 border border-border rounded text-xs font-mono">Enter</kbd> to send, <kbd className="px-1 py-0.5 bg-gray-100 border border-border rounded text-xs font-mono">Shift + Enter</kbd> for new line.
-          </span>
-          
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isGenerating}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg text-white shadow-sm transition-all ${
-              !input.trim() || isGenerating
-                ? 'bg-gray-300 cursor-not-allowed shadow-none'
-                : 'bg-main hover:bg-sky-600 hover:shadow-md hover:shadow-sky-500/10'
-            }`}
-          >
-            <Send className="w-4 h-4" /> Send
-          </button>
-        </div>
+        {selectedProviderObj && !selectedProviderObj.isConnected ? (
+          <div className="flex flex-col items-center justify-center p-4 bg-white border border-dashed border-border rounded-lg text-center h-[120px]">
+            <p className="text-sm font-semibold text-text mb-2">
+              {selectedProviderObj.name} is not connected
+            </p>
+            <p className="text-xs text-text-dim mb-4">
+              Add your API key to use this AI model.
+            </p>
+            <a
+              href="/dashboard/profile?tab=settings&setting=api"
+              className="px-4 py-2 bg-main text-white text-xs font-semibold rounded-lg hover:bg-sky-600 transition-colors"
+            >
+              Connect Now
+            </a>
+          </div>
+        ) : (
+          <>
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Example: Create a modern welcome email for new users with a blue theme..."
+              className="w-full h-20 p-3 bg-white border border-border rounded-lg text-sm text-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-500/50 resize-none transition-all"
+              disabled={isGenerating}
+            />
+            
+            <div className="flex justify-between items-center">
+              <span className="text-[11px] text-text-dim">
+                Press <kbd className="px-1 py-0.5 bg-gray-100 border border-border rounded text-xs font-mono">Enter</kbd> to send, <kbd className="px-1 py-0.5 bg-gray-100 border border-border rounded text-xs font-mono">Shift + Enter</kbd> for new line.
+              </span>
+              
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || isGenerating}
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg text-white shadow-sm transition-all ${
+                  !input.trim() || isGenerating
+                    ? 'bg-gray-300 cursor-not-allowed shadow-none'
+                    : 'bg-main hover:bg-sky-600 hover:shadow-md hover:shadow-sky-500/10'
+                }`}
+              >
+                <Send className="w-4 h-4" /> Send
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

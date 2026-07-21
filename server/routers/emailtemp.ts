@@ -14,10 +14,11 @@ export const emailtempRouter = router({
 
   generateTemplate: protectedProcedure
     .input(z.object({
-      prompt: z.string().min(1, "Prompt cannot be empty")
+      prompt: z.string().min(1, "Prompt cannot be empty"),
+      provider: z.string().optional()
     }))
-    .mutation(async ({ input }) => {
-      const result = await generateEmailTemplate({ prompt: input.prompt });
+    .mutation(async ({ input, ctx }) => {
+      const result = await generateEmailTemplate({ prompt: input.prompt, userId: ctx.user.id, provider: input.provider });
       return { ...result, timestamp: new Date().toISOString() };
     }),
 
@@ -81,6 +82,21 @@ export const emailtempRouter = router({
     }))
     .mutation(async ({ input }) => {
       const result = await deleteEmailTemplate({
+        id: input.id,
+        businessId: input.businessId
+      });
+      return { ...result, timestamp: new Date().toISOString() };
+    }),
+
+  duplicateTemplate: protectedProcedure
+    .input(z.object({
+      id: z.string(),
+      businessId: z.string().uuid()
+    }))
+    .mutation(async ({ input }) => {
+      // Inline duplicate logic here or import duplicateEmailTemplate
+      const { duplicateEmailTemplate } = await import('../controllers/emailtempController');
+      const result = await duplicateEmailTemplate({
         id: input.id,
         businessId: input.businessId
       });

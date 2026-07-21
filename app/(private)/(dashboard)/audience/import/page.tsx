@@ -149,12 +149,12 @@ export default function ImportContactsPage() {
       return addToast('No valid contacts found (missing emails).', 'error');
     }
 
-    const tags = tagString.split(',').map(t => t.trim()).filter(Boolean);
-    
+    const tagNames = tagString.split(',').map(t => t.trim()).filter(Boolean);
+
     importMutation.mutate({
       businessId: activeBusinessId,
       contacts,
-      tags,
+      tagNames,
       status: selectedStatus,
       updateExisting
     });

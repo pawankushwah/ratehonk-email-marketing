@@ -124,6 +124,7 @@ export const domainVerifications = pgTable('domain_verifications', {
   userId: uuid('user_id').references(() => users.id).notNull(),
   businessId: uuid('business_id').references(() => businesses.id), // Added to link domain to a business (tenant)
   domain: text('domain').notNull(),
+  email: text('email'),
   verificationToken: text('verification_token'), // Added to prevent domain hijacking
   status: text('status').notNull().default('pending'), // 'pending' | 'verified'
   createdAt: timestamp('created_at').notNull().defaultNow(),

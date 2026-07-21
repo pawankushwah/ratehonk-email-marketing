@@ -101,6 +101,7 @@ export const importAudienceContacts = async ({
     businessId,
     contacts,
     selectedTagIds,
+    tagNames,
     status,
     updateExisting
 }: {
@@ -115,7 +116,7 @@ export const importAudienceContacts = async ({
         company?: string;
     }>;
     selectedTagIds?: string[];
-    tags?: string[];
+    tagNames?: string[];
     status?: string;
     updateExisting?: boolean;
 }) => {
@@ -174,9 +175,9 @@ export const importAudienceContacts = async ({
 
                 let finalTagIds: string[] = [...(selectedTagIds || [])];
 
-                // Process string tags
-                if (tags && tags.length > 0) {
-                    for (const tagName of tags) {
+                // Process string tag names
+                if (tagNames && tagNames.length > 0) {
+                    for (const tagName of tagNames) {
                         const tName = tagName.trim();
                         if (!tName) continue;
                         

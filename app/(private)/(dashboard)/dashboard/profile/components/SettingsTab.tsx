@@ -275,6 +275,7 @@ const AI_PROVIDERS = [
   { id: 'gemini', name: 'Google Gemini', img: "/images/ai/gemini.svg" },
   { id: 'anthropic', name: 'Anthropic Claude', img: "/images/ai/claude.svg" },
   { id: 'mistral', name: 'Mistral AI', img: "/images/ai/mistral.svg" },
+  { id: 'grok', name: 'xAI (Grok)', img: "/images/ai/grok.png" },
 ];
 
 function ApiSettings() {
@@ -355,8 +356,8 @@ function ApiSettings() {
                     <Image
                       src={provider.img}
                       alt={provider.name}
-                      width={20}
-                      height={20}
+                      width={40}
+                      height={40}
                     />
                   </div>
                   <h3 className="font-semibold text-text text-sm">{provider.name}</h3>
@@ -397,7 +398,14 @@ function ApiSettings() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center">
-              {activeProviderObj && <activeProviderObj.icon className="w-5 h-5 text-gray-600" />}
+              {activeProviderObj && (
+                <Image
+                  src={activeProviderObj.img}
+                  alt={activeProviderObj.name}
+                  width={24}
+                  height={24}
+                />
+              )}
             </div>
             <div>
               <h1 className="text-xl font-bold text-text">{activeProviderObj?.name} Integration</h1>

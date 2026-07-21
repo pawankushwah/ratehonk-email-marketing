@@ -12,41 +12,6 @@ export interface EmailTemplate {
   updatedAt: string;
 }
 
-const SYSTEM_TEMPLATES: EmailTemplate[] = [
-  {
-    id: 'tpl-1',
-    name: 'Welcome Email',
-    category: 'Onboarding',
-    description: 'A warm welcome template with standard greeting placeholders and call-to-action button.',
-    htmlContent: '<div style="font-family: sans-serif; padding: 20px;"><h2>Welcome Onboard!</h2></div>',
-    updatedAt: '2026-07-15T10:00:00.000Z'
-  },
-  {
-    id: 'tpl-2',
-    name: 'Monthly Newsletter',
-    category: 'Update',
-    description: 'A clean layout designed for product announcements and article features.',
-    htmlContent: '<div style="font-family: sans-serif; padding: 20px;"><h2>Monthly Update</h2></div>',
-    updatedAt: '2026-07-14T12:30:00.000Z'
-  },
-  {
-    id: 'tpl-3',
-    name: 'Summer Sale Promotion',
-    category: 'Marketing',
-    description: 'An eye-catching visual layout focused on discounts, coupon codes, and conversions.',
-    htmlContent: '<div style="font-family: sans-serif; padding: 20px;"><h2>Summer Sale!</h2></div>',
-    updatedAt: '2026-07-10T09:15:00.000Z'
-  },
-  {
-    id: 'tpl-4',
-    name: 'Feedback Survey',
-    category: 'Feedback',
-    description: 'A simple, direct message prompting subscribers to review their experience.',
-    htmlContent: '<div style="font-family: sans-serif; padding: 20px;"><h2>Give Feedback</h2></div>',
-    updatedAt: '2026-07-08T15:45:00.000Z'
-  }
-];
-
 export const getEmailTemplates = async ({ businessId }: { businessId: string }) => {
   try {
     const dbTemplates = await db
@@ -64,12 +29,12 @@ export const getEmailTemplates = async ({ businessId }: { businessId: string }) 
       updatedAt: t.updatedAt.toISOString(),
     }));
 
-    const allTemplates = [...userTemplatesMapped, ...SYSTEM_TEMPLATES];
+    const allTemplates = [...userTemplatesMapped];
     return { success: true, templates: allTemplates };
   } catch (error: any) {
     console.error('[emailtempController] Error fetching templates from DB:', error);
     // Fall back to returning default system templates so UI doesn't completely crash
-    return { success: true, templates: SYSTEM_TEMPLATES };
+    return { success: true, templates: [] };
   }
 };
 
@@ -115,43 +80,26 @@ export const createEmailTemplate = async ({
   }
 };
 
-export const generateEmailTemplate = async ({ prompt }: { prompt: string }) => {
+export const generateEmailTemplate = async ({ prompt, userId, provider }: { prompt: string; userId?: string; provider?: string }) => {
   try {
-    const html = await generateHTMLFromPrompt(prompt);
+    const { generateContent } = await import('../services/aiService');
+    const { EMAIL_TEMPLATE_SYSTEM_PROMPT } = await import('../services/aiInstructions');
+    const html = await generateContent(userId, prompt, EMAIL_TEMPLATE_SYSTEM_PROMPT, provider);
     return { success: true, html };
   } catch (error: any) {
     console.error('[emailtempController] Error generating email template:', error);
-    
-    // Map specific Gemini errors to clean user-facing messages
-    if (error.message === 'GEMINI_API_KEY_MISSING') {
-      throw new Error('Gemini API key is not configured. Please set the GEMINI_API_KEY environment variable in your .env file.');
+    if (error.message === 'NO_API_KEY') {
+      throw new Error('No active AI provider configured. Please go to Settings > API & Integrations to add and activate an API key.');
     }
-    
-    // Check for Google GenAI specific issue codes or status messages
-    if (error.status === 401 || error.status === 403 || error.message?.includes('API key') || error.message?.includes('API_KEY_INVALID')) {
-      throw new Error('Authentication failed: Invalid Gemini API key.');
-    } else if (error.status === 429 || error.message?.includes('quota') || error.message?.includes('Rate limit') || error.message?.includes('RESOURCE_EXHAUSTED')) {
-      throw new Error('Rate limit or quota exceeded: Please check your Gemini billing details or try again in a few moments.');
-    } else if (error.status === 503 || error.code === 'ETIMEDOUT') {
-      throw new Error('Gemini service is temporarily overloaded or timed out. Please try again.');
+    if (error.message === 'NO_API_KEY_FOR_PROVIDER') {
+      throw new Error('You do not have an active API key configured for the selected provider. Please go to Settings > API & Integrations to configure it.');
     }
-    
     throw new Error(error.message || 'An unexpected error occurred during email generation.');
   }
 };
 
 export const getTemplateById = async ({ id, businessId }: { id: string; businessId: string }) => {
   try {
-    if (id.startsWith('tpl-')) {
-      const systemTpl = SYSTEM_TEMPLATES.find((t) => t.id === id);
-      if (systemTpl) {
-        return {
-          success: true,
-          template: systemTpl,
-        };
-      }
-    }
-
     const [template] = await db
       .select()
       .from(emailTemplates)
@@ -249,5 +197,31 @@ export const deleteEmailTemplate = async ({
   } catch (error: any) {
     console.error('[emailtempController] Error deleting template:', error);
     throw new Error(error.message || 'Failed to delete email template');
+  }
+};
+
+export const duplicateEmailTemplate = async ({
+  id,
+  businessId
+}: {
+  id: string;
+  businessId: string;
+}) => {
+  try {
+    const existing = await getTemplateById({ id, businessId });
+    if (!existing.success || !existing.template) {
+      throw new Error('Template not found');
+    }
+
+    return await createEmailTemplate({
+      businessId,
+      name: `${existing.template.name} (Copy)`,
+      category: existing.template.category,
+      description: existing.template.description,
+      htmlContent: existing.template.htmlContent
+    });
+  } catch (error: any) {
+    console.error('[emailtempController] Error duplicating template:', error);
+    throw new Error(error.message || 'Failed to duplicate email template');
   }
 };

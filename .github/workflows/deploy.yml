@@ -1,0 +1,83 @@
+name: 🚀 Deploy Express Application to CloudPanel
+
+on:
+  push:
+    branches:
+      - main  # Triggers deployment whenever code is pushed to the main branch -tmp
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚚 Checkout Latest Code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js Environment
+        uses: actions/checkout@v4
+        # (Optional: Add test stages here if you want to run linting/testing before deploying)
+
+      - name: 📂 Sync Files via Rsync over SSH
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          ARGS: "-rlgoDzvc --delete" # Clean sync: removes deleted repository files from server
+          REMOTE_HOST: ${{ secrets.SERVER_IP }}
+          REMOTE_USER: ${{ secrets.SERVER_USER }}
+          REMOTE_PORT: "22"
+          SOURCE: "./" # Sync entire project folder
+          TARGET: "/home/${{ secrets.SERVER_USER }}/htdocs/emailmarketing.ratehonk.com/" # Path to your site folder
+          EXCLUDE: "/node_modules/, /.git/, /.github/, .env, /dist/, /uploads/" # Do not sync local dependency folders
+
+      - name: 🖼️ Sync Uploads folder (No delete)
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          ARGS: "-rlgoDzvc" # No delete, so server images remain
+          REMOTE_HOST: ${{ secrets.SERVER_IP }}
+          REMOTE_USER: ${{ secrets.SERVER_USER }}
+          REMOTE_PORT: "22"
+          SOURCE: "./uploads/"
+          TARGET: "/home/${{ secrets.SERVER_USER }}/htdocs/emailmarketing.ratehonk.com/uploads/"
+
+      - name: 🔄 Install Dependencies & Restart App
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+
+            # 🛑 CRUCIAL: Exit immediately if any command exits with a non-zero status
+            set -e
+            cd /home/${{ secrets.SERVER_USER }}/htdocs/emailmarketing.ratehonk.com/
+
+            if [ ! -f .env ]; then
+              echo "⚠️ WARNING: .env file is missing on the server!"
+              echo "Creating a baseline .env file with default port to prevent crash..."
+              echo "PORT=5005" > .env
+              echo "NODE_ENV=production" >> .env
+              echo "👉 Action required: SSH into the server and fill in your database/API keys manually!"
+            else
+              echo "✅ .env file detected successfully."
+            fi
+
+            if ! command -v pm2 &> /dev/null; then
+              echo "⚠️ PM2 not found. Installing globally..."
+              npm install pm2@latest -g
+            else
+              echo "✅ PM2 is already installed. Skipping installation."
+            fi
+
+            npm install --legacy-peer-deps --force
+            npx tsc --noEmit
+            npm run build
+            rm -rf ./app
+            npm prune --production
+            
+            # Ensure PM2 starts in production mode to serve static files correctly
+            export NODE_ENV=production
+            pm2 restart index --update-env || pm2 start dist/index.js --name "index"
+            pm2 save
+

@@ -51,7 +51,7 @@ export const audienceRouter = router({
         company: z.string().optional()
       })),
       selectedTagIds: z.array(z.string().uuid()).optional(),
-      tags: z.array(z.string()).optional(),
+      tagNames: z.array(z.string()).optional(),
       status: z.string().optional(),
       updateExisting: z.boolean().optional()
     }))

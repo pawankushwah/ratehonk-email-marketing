@@ -51,6 +51,17 @@ export default function CampaignsEmailTemplatesPage() {
     }
   });
 
+  // Duplicate Template Mutation
+  const duplicateMutation = trpc.emailtemp.duplicateTemplate.useMutation({
+    onSuccess: () => {
+      addToast('Email template duplicated successfully!', 'success');
+      refetch();
+    },
+    onError: (error) => {
+      addToast(error.message || 'Failed to duplicate template.', 'error');
+    }
+  });
+
   const handleUseTemplate = (template: EmailTemplate) => {
     if (template.id.startsWith('tpl-')) {
       router.push(`/campaigns/email-templates/builder?id=${template.id}`);
@@ -64,6 +75,18 @@ export default function CampaignsEmailTemplatesPage() {
     
     if (action === 'Edit') {
       router.push(`/campaigns/email-templates/builder?id=${template.id}`);
+      return;
+    }
+
+    if (action === 'Duplicate') {
+      if (template.id.startsWith('tpl-')) {
+        addToast('System templates cannot be duplicated directly. Create a new one based on it.', 'error');
+        return;
+      }
+      duplicateMutation.mutate({
+        id: template.id,
+        businessId: activeBusinessId || ''
+      });
       return;
     }
 
