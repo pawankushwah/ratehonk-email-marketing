@@ -16,7 +16,7 @@ jobs:
       - name: 🟢 Setup Node.js Environment
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
+          node-version: '24.x'
         env:
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
@@ -81,9 +81,9 @@ jobs:
               echo "✅ Redis is already installed."
             fi
 
-            # ---- Ensure Node 22 is installed (nvm – no sudo) ----
-            if ! command -v node &> /dev/null || [ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 22 ]; then
-              echo "⚠️ Node 22 not found. Installing via nvm..."
+            # ---- Ensure Node 24 is installed (nvm – no sudo) ----
+            if ! command -v node &> /dev/null || [ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 24 ]; then
+              echo "⚠️ Node 24 not found. Installing via nvm..."
               # Install nvm if it isn’t already present
               if [ ! -d "$HOME/.nvm" ]; then
                 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
@@ -92,11 +92,11 @@ jobs:
               export NVM_DIR="$HOME/.nvm"
               # shellcheck disable=SC1090
               [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-              # Install and use Node 22
-              nvm install 22
-              nvm use 22
+              # Install and use Node 24
+              nvm install 24
+              nvm use 24
             else
-              echo "✅ Node 22 is already installed."
+              echo "✅ Node 24 is already installed."
             fi
 
             # ---- Production dependencies ----
