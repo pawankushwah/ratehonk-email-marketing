@@ -52,6 +52,7 @@
         "react-dom": "19.2.4",
         "react-easy-crop": "^6.2.2",
         "react-hook-form": "^7.80.0",
+        "react-is": "^19.2.7",
         "recharts": "^3.9.2",
         "trpc-openapi": "^1.2.0",
         "ua-parser-js": "^2.0.10",
