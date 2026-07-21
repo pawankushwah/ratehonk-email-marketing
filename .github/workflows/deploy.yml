@@ -99,18 +99,14 @@ jobs:
               echo "✅ Node 24 is already installed."
             fi
 
-            # ---- Production dependencies ----
+            # ---- Install Dependencies & Build ----
             npm install --legacy-peer-deps --force
 
+            # Build both Next.js app and Express server
             npm run build
-            # Compile server TypeScript to dist
-            npx tsc --project tsconfig.server.json
-            rm -rf ./app
-            npm ci --only=production
             
-            # Ensure PM2 starts in production mode to serve static files correctly
+            # Ensure PM2 starts in production mode
             export NODE_ENV=production
-            pm2 restart index --update-env || pm2 start dist/index.js --name "index"
-            pm2 start npm --name "next" -- start
+            pm2 restart ratehonk || pm2 start dist/index.js --name "ratehonk"
             pm2 save
 
